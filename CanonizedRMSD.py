@@ -1,4 +1,6 @@
+#!/home/jerry/anaconda3/bin/python 
 import sys
+import argparse
 from time import clock
 
 from rdkit import Chem
@@ -59,7 +61,7 @@ def OutputInterrelationship(collection,sequenceA,sequenceB):
     for item in collection:
         print(str(sequenceA.index(item[0]+1)+1).center(16)+"  "+str(sequenceB.index(item[1]+1)+1).center(16))
 
-def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False):  
+def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False):  
     if(saveMediates):
         if(len(source1.split('.'))==2):
             address1=source1.split('.')
@@ -75,15 +77,20 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False):
     start_time=clock()
     A,removedHA=removeHs(ConvertFromGaussianToRdkit(source1,appending[0]))
     B,removedHB=removeHs(ConvertFromGaussianToRdkit(source2,appending[1]))
-    contentA=main.CanonizedSequenceRetriever(A)
-    contentB=main.CanonizedSequenceRetriever(B)
-    main.JudgeIdentity(contentA,contentB,start_time)
+    contentA,molA=main.CanonizedSequenceRetriever(A,False,no_isomerism)
+    contentB,molB=main.CanonizedSequenceRetriever(B,False,no_isomerism)
+    canonizedA=SequenceExchanger(molA,appending[2],contentA)
+    if not main.JudgeIdentity(contentA,contentB):
+        if saveMediates:
+            SequenceExchanger(molB,appending[3],contentB)
+        print("Two input molecules are not identical!")
+        sys.exit()
+    print("Two input molecules are identical!")
     end_time_1=clock()
-    contentBseries=main.CanonizedSequenceRetriever(B,True)
-    canonizedA=SequenceExchanger(A,appending[2],contentA)
+    contentBseries=main.CanonizedSequenceRetriever(B,True,no_isomerism)    
     rmsdCollection=[]
     for contentB in contentBseries:        
-        canonizedB=SequenceExchanger(B,0,contentB)
+        canonizedB=SequenceExchanger(molB,0,contentB)
         (ma,ea)=FormMat(canonizedA)
         (mb,eb)=FormMat(canonizedB)
         if CheckElements(ea,eb):
@@ -94,7 +101,7 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False):
         minIndex,minimum=Min(rmsdCollection)
         print('RMSD='+str(minimum))
         if saveMediates:
-            canonizedB=SequenceExchanger(B,appending[3],contentBseries[minIndex])
+            canonizedB=SequenceExchanger(molB,appending[3],contentBseries[minIndex])
             RMSD(FormMat(canonizedA)[0],FormMat(canonizedB)[0],mediates="conversion_matrices")
         if outputInterrelationship:
             OutputInterrelationship(GetInterrelationship(contentA,contentBseries[minIndex]),removedHA,removedHB)
@@ -102,33 +109,19 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False):
     print('judging time:%f,calculation time:%f'%(end_time_1-start_time,end_time_2-start_time))
 
 if __name__=="__main__":
-    if len(sys.argv)==3:   
-        a=sys.argv[1]
-        b=sys.argv[2]
-        if CheckValidity(a,b):
-            Calculate(a,b)
-    elif len(sys.argv)==4:
-        a=sys.argv[1]
-        b=sys.argv[2] 
-        c=sys.argv[3]
-        saveMediates=False
-        outputRelations=False
-        if c[0]=='-':
-            if 'S' in c.upper():
-                saveMediates=True
-            if 'O' in c.upper():
-                outputRelations=True
-            Calculate(a,b,saveMediates,outputRelations)
-        else:
-            help()
-    elif len(sys.argv)>4:
-        print("Too many input arugments! Type -h to get help")
-        sys.exit(0)
-    elif len(sys.argv)==2:
-        if sys.argv[1].upper()=='-H':
-            print("\nCanonizedRMSD: \n   To calculate the RMSD of two molecules after canonizing them.\n\nUsage:\n   CanonizedRMSD.py File1 File2 [Options]\n\nOptions:\n   -s    Saving Intermediates (Not saving by default)\n   -o    Output interrelationship of corresponding atoms in File 1 and File 2 (Not outputting by default)\n\nSupported file types:\n   .mol | .sdf | .rxn\n")
-        else:
-            help()
-    else:
-        help()
+    parser=argparse.ArgumentParser( \
+    description="to calculate the RMSD of two molecules after canonizing them. \
+    \n\nsupported file types:\n   .mol | .sdf | .rxn\n", \
+    formatter_class=argparse.RawTextHelpFormatter)
+    parser.add_argument("file1")
+    parser.add_argument("file2")
+    parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
+    parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
+    parser.add_argument('-i',"--no_isomerism",action="store_true",help="do not consider geometric and stereometric isomerism when canonizing")
 
+    # args=parser.parse_args()
+    # if CheckValidity(args.file1,args.file2):
+    #     Calculate(args.file1,args.file2,args.save,args.mapping,args.no_isomerism)
+
+    Calculate('testsets/test4/1.mol','testsets/test4/2.mol',saveMediates=True)
+   

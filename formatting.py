@@ -1,5 +1,6 @@
 from io import StringIO
 
+from rdkit import Chem
 from numpy import *
 
 
@@ -139,12 +140,9 @@ def RMSD(m1,m2,mediates=0):
 def SequenceExchanger(f1,f2,dictionary):
     sequence=[i["canonized"] for i in sorted(dictionary,key=lambda p:p["original"])]
     substitution=[i["original"] for i in sorted(dictionary,key=lambda p:p["canonized"])]
-    if ('\n' in f1):
-        s_file=StringIO()
-        s_file.write(f1)
-        s_file.seek(0)
-    else:
-        s_file=open(f1)
+    s_file=StringIO()
+    s_file.write(Chem.MolToMolBlock(f1))
+    s_file.seek(0)
     content=[]
     content.append("\n     RDKit          \n\n")
     
@@ -167,7 +165,7 @@ def SequenceExchanger(f1,f2,dictionary):
         l=s_file.readline()
         content.append("%3s%3s"%(sequence[int(l[:3])-1]+1,sequence[int(l[3:6])-1]+1)+l[6:])
     content.append("M  END\n$$$$\n")
-    string=''.join(content)
+    string=''.join(content)    # content=[]    
     if f2!=0:
         t_file=open(f2,'w')
         t_file.write(string)
