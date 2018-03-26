@@ -3,9 +3,16 @@ from io import StringIO
 from rdkit import Chem
 from numpy import *
 
+Z_TYPE=Chem.rdchem.BondStereo.STEREOZ
+E_TYPE=Chem.rdchem.BondStereo.STEREOE
 
-def ConvertFromGaussianToRdkit(f1,f2):   
-    s_file=open(f1,'r')
+def ConvertFromGaussianToRdkit(f1,f2): 
+    try:  
+        s_file=open(f1,'r')
+    except:
+        print("Cannot open file %s, please check!"%f1)
+        import sys
+        sys.exit()
     content=[]
     content.append("\n     RDKit          \n\n")
     s_file.readline()
@@ -97,6 +104,22 @@ def FormMat(address):
         elements.append(l[31:34])
     return (matrix(points),elements)
 
+def GetIndexList(file):
+    # get the non-H atom indices and form a list
+    with open(file) as f:
+        line=f.readline().strip()
+        while line[-4:]!="ATOM":
+            line=f.readline().strip()
+        index=1
+        sequence=[]
+        while line[-4:]!="BOND":
+            line=f.readline().strip()
+            if line[-1]!="H":
+                sequence.append(index)
+            index+=1
+    del sequence[-1]
+    return sequence
+
 def CheckElements(e1,e2):
     n=len(e1)
     if (len(e2)!=n):
@@ -140,6 +163,8 @@ def RMSD(m1,m2,mediates=0):
 def SequenceExchanger(f1,f2,dictionary):
     sequence=[i["canonized"] for i in sorted(dictionary,key=lambda p:p["original"])]
     substitution=[i["original"] for i in sorted(dictionary,key=lambda p:p["canonized"])]
+    stereo=[i["item"].stereochemistry for i in sorted(dictionary,key=lambda p:p["canonized"])]
+    bondstereo=[bond.GetStereo() for bond in f1.GetBonds()]
     s_file=StringIO()
     s_file.write(Chem.MolToMolBlock(f1))
     s_file.seek(0)
@@ -159,11 +184,23 @@ def SequenceExchanger(f1,f2,dictionary):
         Atoms.append(s_file.readline())
     
     for i in range(0,nAtoms):
-        content.append(Atoms[substitution[i]])
+        line=Atoms[substitution[i]]
+        if stereo[i]==1:
+            content.append(line[:41]+"S"+line[42:])
+        elif stereo[i]==2:
+            content.append(line[:41]+"R"+line[42:])
+        else:
+            content.append(line[:41]+"0"+line[42:])
 
     for j in range(0,nBonds):
         l=s_file.readline()
-        content.append("%3s%3s"%(sequence[int(l[:3])-1]+1,sequence[int(l[3:6])-1]+1)+l[6:])
+        if bondstereo[j]==Z_TYPE:
+            bondStereoTag='Z'
+        elif bondstereo[j]==E_TYPE:
+            bondStereoTag='E'
+        else:
+            bondStereoTag='0'
+        content.append("%3s%3s"%(sequence[int(l[:3])-1]+1,sequence[int(l[3:6])-1]+1)+l[6:11]+bondStereoTag+l[12:])
     content.append("M  END\n$$$$\n")
     string=''.join(content)    # content=[]    
     if f2!=0:
@@ -172,3 +209,33 @@ def SequenceExchanger(f1,f2,dictionary):
         t_file.close()
     s_file.close()
     return string
+
+def ReadFromMol(file,appending):
+    A,removedHA=removeHs(ConvertFromGaussianToRdkit(file,appending))
+    molA=Chem.MolFromMolBlock(A)
+    return molA,removedHA
+
+def ReadFromMol2(file):
+    molA=Chem.MolFromMol2File(source1)
+    removedHA=GetIndexList(source1)
+    return molA,removedHA
+
+def Read(file,appending,fileState):
+    if fileState==1:
+        mol,removedH=ReadFromMol(file,appending)
+    elif fileState==2:
+        mol,removedH=ReadFromMol2(file)
+    elif fileState==0:
+        try:
+            mol,removedH=ReadFromMol(file,appending)
+        except:
+            try:
+                mol,removedH=ReadFromMol2(file)
+            except:
+                print("Unsupported file: %s"%file)
+                import sys
+                sys.exit()
+    return mol,removedH
+
+if __name__=="__main__":
+    print(GetIndexList("testsets/test4/r_rdkit.mol2"))

@@ -9,14 +9,13 @@ E_TYPE=Chem.rdchem.BondStereo.STEREOE
 class atom:
     def __init__(self,a=0,OriginalIndex=0,CopyFrom=0):
         if CopyFrom==0:
+            self.source=a
             self.degree=a.GetDegree()
             self.atomicNumber=a.GetAtomicNum()
             self.attatchedHs=a.GetTotalNumHs()
             self.charge=a.GetNumRadicalElectrons()
-            self.stereochemistry=int(a.GetChiralTag())  #0-Unspecified,1-,2-,3-not chiral
-            self.geometric=0
+            self.stereochemistry=self.__getStereoNum()
             self.bonds=[bond.GetBondType() for bond in a.GetBonds()]
-            self.source=a
             self.neighbors=()
             self.neighborIndexs=[]
             self.originalIndex=OriginalIndex
@@ -31,6 +30,7 @@ class atom:
             self.originalIndex=CopyFrom.originalIndex
             self.currentIndex=CopyFrom.currentIndex
             self.isComplete=CopyFrom.isComplete
+            self.stereochemistry=CopyFrom.stereochemistry
 
     def __getIdCode(self):
         #    ***      *        *            *        *       **** 
@@ -46,6 +46,26 @@ class atom:
         idCode+=self.bonds.count(Chem.rdchem.BondType.TRIPLE)*10
         idCode+=self.bonds.count(Chem.rdchem.BondType.AROMATIC)
         return int(idCode)
+
+    def __getStereoNum(self):
+        # 0: unspecified  1: S(tetrahedron atom)  2: R(tetrahedron)  3:  E(double bond)  4:  Z(double bond)
+        doubleBondList=[bond for bond in self.source.GetBonds() if bond.GetBondType()==Chem.rdchem.BondType.DOUBLE]
+        if len(doubleBondList):
+            doubleBond=doubleBondList[0]
+            if int(doubleBond.GetStereo()):
+                if doubleBond.GetStereo()==Z_TYPE:
+                    return 4
+                elif doubleBond.GetStereo()==E_TYPE:
+                    return 3
+        else:
+            if self.source.HasProp("_CIPCode"):
+                CIPCode=self.source.GetProp("_CIPCode")
+                if CIPCode=='R':
+                    return 2
+                elif CIPCode=='S':
+                    return 1
+        return 0
+
     def updateNeighborIndexs(self):
         self.neighborIndexs=[item.currentIndex for item in self.neighbors]
         self.neighborIndexs.sort()
@@ -321,34 +341,37 @@ def Canonizer(molecule,Branching=False,no_isomerism=False):
             workset.remove(item)
     # Iterative refinement
     Refine(workset)
-    if not no_isomerism:
-        workset=set(worklist)
-        StereoAssigner(workset)
+    # if not no_isomerism:
+    #     workset=set(worklist)
+    #     StereoAssigner(workset)
     if Branching:
         collection=[]
         BranchingTieBreaking(worklist,collection)
         return collection
     else:
-        OrdinaryTieBreaking(worklist)
+        OrdinaryTieBreaking(worklist)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
         return worklist
 
-def CanonizedSequenceRetriever(sourceFile,serial=False,no_isomerism=False):
-    mol=Chem.MolFromMolBlock(sourceFile)
+def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False):
     global molConf
     molConf=mol.GetConformer()
     if mol==None:
         import sys
         sys.exit()
+    if not no_isomerism:
+        Chem.rdmolops.AssignAtomChiralTagsFromStructure(mol)
+        Chem.rdmolops.DetectBondStereoChemistry(mol,molConf)
+        Chem.rdmolops.AssignStereochemistry(mol)
     collection=Canonizer(mol,serial,no_isomerism)
     if serial:
         result=[]
         for canonized in collection:
-            dictionary=[{"original":item.originalIndex,"canonized":item.currentIndex} for item in canonized]
+            dictionary=[{"original":item.originalIndex,"canonized":item.currentIndex,"item":item} for item in canonized]
             result.append(dictionary)
         return result
     else:
         dictionary=[{"original":item.originalIndex,"canonized":item.currentIndex,"item":item} for item in collection]
-        return dictionary,mol
+        return dictionary
 
 
 def JudgeIdentity(serialA,serialB):
@@ -359,21 +382,14 @@ def JudgeIdentity(serialA,serialB):
             return False
         atomB=atomBsource[0]
         if not (atomA.neighborIndexs == atomB.neighborIndexs \
-            and atomA.stereochemistry==atomB.stereochemistry \
-            and atomA.geometric==atomB.geometric):
+            and atomA.stereochemistry==atomB.stereochemistry):
             return False
     return True
 
 
 if __name__=='__main__':
     
-    content=Chem.MolFromMolFile('testsets/test.sdf')
-    collections=Canonizer(content)
-    for item in collections:
-        print(item.originalIndex,item.currentIndex)
-    # for canonized in collections:
-    #     for item in canonized:
-    #         print(item.originalIndex,item.currentIndex)
-        # print("===================================")
+    content=Chem.MolFromMolFile('testsets/test4/1_rdkit.mol')
+    CanonizedSequenceRetriever(content)
 
 

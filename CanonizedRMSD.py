@@ -26,22 +26,29 @@ def Min(myList):
 
 
 def CheckValidity(f1,f2):
+    # state -1: cannot open  0: unrecognized file type   1: mol type   2: mol2 type
     if len(f1.split('.')) > 1:
-        state1=0
-        if f1.split('.')[1].strip() in ['sdf','mol','rxn']:
+        state1=-1
+        extension=f1.split('.')[1].strip()
+        if extension in ['sdf','mol','rxn']:
             state1=1
+        elif extension in ['mol2','ml2']:
+            state1=2
     else:
-        state1=2
+        state1=0
     if len(f2.split('.')) > 1:
-        state2=0
-        if f2.split('.')[1].strip() in ['sdf','mol','rxn']:
+        state2=-1
+        extension=f2.split('.')[1].strip()
+        if extension in ['sdf','mol','rxn']:
             state2=1
+        elif extension in ['mol2','ml2']:
+            state2=2
     else:
-        state2=2
-    if state1!=0 and state2!=0:
-        if state1==2 or state2==2:
+        state2=0
+    if state1>=0 and state2>=0:
+        if state1==0 or state2==0:
             print("\nWarning: Unknown file type! \n\nType -h to get supported file types.\n")
-        return 1
+        return state1,state2
     else:
         print("\nError: Unsupported file type! \n\nType -h to get supported file types.\n")
         sys.exit(0)
@@ -63,22 +70,22 @@ def OutputInterrelationship(collection,sequenceA,sequenceB):
 
 def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False):  
     if(saveMediates):
-        if(len(source1.split('.'))==2):
-            address1=source1.split('.')
-        elif(len(source1.split('.'))==1):
-            address1=[source1,'']
-        if(len(source2.split('.'))==2):
-            address2=source2.split('.')
-        elif(len(source2.split('.'))==1):
-            address2=[source2,'']
-        appending=[address1[0]+"_rdkit."+address1[1],address2[0]+"_rdkit."+address2[1],address1[0]+"_canonized."+address1[1],address2[0]+"_canonized."+address2[1]]
+        if(file1State):
+            address1=source1.split('.')[0]
+        else:
+            address1=source1
+        if(file2State):
+            address2=source2.split('.')[0]
+        else:
+            address2=source2
+        appending=[address1+"_rdkit.mol",address2+"_rdkit.mol",address1+"_canonized.mol",address2+"_canonized.mol"]
     else:
         appending=[0,0,0,0]
     start_time=clock()
-    A,removedHA=removeHs(ConvertFromGaussianToRdkit(source1,appending[0]))
-    B,removedHB=removeHs(ConvertFromGaussianToRdkit(source2,appending[1]))
-    contentA,molA=main.CanonizedSequenceRetriever(A,False,no_isomerism)
-    contentB,molB=main.CanonizedSequenceRetriever(B,False,no_isomerism)
+    molA,removedHA=Read(source1,appending[0],file1State)
+    contentA=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
+    molB,removedHB=Read(source2,appending[1],file2State)    
+    contentB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
     canonizedA=SequenceExchanger(molA,appending[2],contentA)
     if not main.JudgeIdentity(contentA,contentB):
         if saveMediates:
@@ -87,7 +94,7 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
         sys.exit()
     print("Two input molecules are identical!")
     end_time_1=clock()
-    contentBseries=main.CanonizedSequenceRetriever(B,True,no_isomerism)    
+    contentBseries=main.CanonizedSequenceRetriever(molB,True,no_isomerism)    
     rmsdCollection=[]
     for contentB in contentBseries:        
         canonizedB=SequenceExchanger(molB,0,contentB)
@@ -111,17 +118,19 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
 if __name__=="__main__":
     parser=argparse.ArgumentParser( \
     description="to calculate the RMSD of two molecules after canonizing them. \
-    \n\nsupported file types:\n   .mol | .sdf | .rxn\n", \
+    \n\nsupported file types:\n   .mol | .sdf | .rxn | .mol2 | .ml2 \n", \
     formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("file1")
     parser.add_argument("file2")
     parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
     parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
-    parser.add_argument('-i',"--no_isomerism",action="store_true",help="do not consider geometric and stereometric isomerism when canonizing")
+    parser.add_argument('-i',"--ignore_isomerism",action="store_true",help="ignore geometric and stereometric isomerism when canonizing")
 
-    # args=parser.parse_args()
-    # if CheckValidity(args.file1,args.file2):
-    #     Calculate(args.file1,args.file2,args.save,args.mapping,args.no_isomerism)
-
-    Calculate('testsets/test4/1.mol','testsets/test4/2.mol',saveMediates=True)
-   
+    args=parser.parse_args()  
+    global file1State
+    global file2State
+    file1State,file2State=CheckValidity(args.file1,args.file2)
+    Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism)
+    #file1State=0
+    #file2State=0
+    #Calculate('testsets/test2/1.sdf','testsets/test2/2.sdf',saveMediates=True,no_isomerism=True)
