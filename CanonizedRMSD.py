@@ -8,7 +8,7 @@ from collections import defaultdict
 import operator
 import sys
 
-from formatting import *
+import formatting
 import main
 
 def help():
@@ -29,7 +29,7 @@ def CheckValidity(f1,f2):
     # state -1: cannot open  0: unrecognized file type   1: mol type   2: mol2 type
     if len(f1.split('.')) > 1:
         state1=-1
-        extension=f1.split('.')[1].strip()
+        extension=f1.split('.')[1].strip().lower()
         if extension in ['sdf','mol','rxn']:
             state1=1
         elif extension in ['mol2','ml2']:
@@ -38,7 +38,7 @@ def CheckValidity(f1,f2):
         state1=0
     if len(f2.split('.')) > 1:
         state2=-1
-        extension=f2.split('.')[1].strip()
+        extension=f2.split('.')[1].strip().lower()
         if extension in ['sdf','mol','rxn']:
             state2=1
         elif extension in ['mol2','ml2']:
@@ -82,55 +82,59 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
     else:
         appending=[0,0,0,0]
     start_time=clock()
-    molA,removedHA=Read(source1,appending[0],file1State)
-    contentA=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
-    molB,removedHB=Read(source2,appending[1],file2State)    
-    contentB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
-    canonizedA=SequenceExchanger(molA,appending[2],contentA)
+    molA,removedHA=formatting.Read(source1,appending[0],file1State)
+    contentA,_=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
+    molB,removedHB=formatting.Read(source2,appending[1],file2State)    
+    contentB,unbrokenB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
+    canonizedA=formatting.SequenceExchanger(molA,appending[2],contentA)
     if not main.JudgeIdentity(contentA,contentB):
         if saveMediates:
-            SequenceExchanger(molB,appending[3],contentB)
+            formatting.SequenceExchanger(molB,appending[3],contentB)
         print("Two input molecules are not identical!")
         sys.exit()
     print("Two input molecules are identical!")
     end_time_1=clock()
-    contentBseries=main.CanonizedSequenceRetriever(molB,True,no_isomerism)    
+    contentBseries=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB)    
     rmsdCollection=[]
     for contentB in contentBseries:        
-        canonizedB=SequenceExchanger(molB,0,contentB)
-        (ma,ea)=FormMat(canonizedA)
-        (mb,eb)=FormMat(canonizedB)
-        if CheckElements(ea,eb):
-            rmsdCollection.append(RMSD(ma,mb))
+        canonizedB=formatting.SequenceExchanger(molB,0,contentB)
+        (ma,ea)=formatting.FormMat(canonizedA)
+        (mb,eb)=formatting.FormMat(canonizedB)
+        if formatting.CheckElements(ea,eb):
+            rmsdCollection.append(formatting.RMSD(ma,mb))
         else:
             break
     if len(rmsdCollection)!=0:
         minIndex,minimum=Min(rmsdCollection)
         print('RMSD='+str(minimum))
         if saveMediates:
-            canonizedB=SequenceExchanger(molB,appending[3],contentBseries[minIndex])
-            RMSD(FormMat(canonizedA)[0],FormMat(canonizedB)[0],mediates="conversion_matrices")
+            canonizedB=formatting.SequenceExchanger(molB,appending[3],contentBseries[minIndex])
+            formatting.RMSD(formatting.FormMat(canonizedA)[0],formatting.FormMat(canonizedB)[0],mediates="conversion_matrices")
         if outputInterrelationship:
             OutputInterrelationship(GetInterrelationship(contentA,contentBseries[minIndex]),removedHA,removedHB)
     end_time_2=clock()
     print('judging time:%f,calculation time:%f'%(end_time_1-start_time,end_time_2-start_time))
 
 if __name__=="__main__":
-    parser=argparse.ArgumentParser( \
-    description="to calculate the RMSD of two molecules after canonizing them. \
-    \n\nsupported file types:\n   .mol | .sdf | .rxn | .mol2 | .ml2 \n", \
-    formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("file1")
-    parser.add_argument("file2")
-    parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
-    parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
-    parser.add_argument('-i',"--ignore_isomerism",action="store_true",help="ignore geometric and stereometric isomerism when canonizing")
-
-    args=parser.parse_args()  
     global file1State
     global file2State
-    file1State,file2State=CheckValidity(args.file1,args.file2)
-    Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism)
-    #file1State=0
-    #file2State=0
-    #Calculate('testsets/test2/1.sdf','testsets/test2/2.sdf',saveMediates=True,no_isomerism=True)
+    DEBUG=False
+    if not DEBUG:
+        parser=argparse.ArgumentParser( \
+        description="to calculate the RMSD of two molecules after canonizing them. \
+        \n\nsupported file types:\n   .mol | .sdf | .rxn | .mol2 | .ml2 \n", \
+        formatter_class=argparse.RawTextHelpFormatter)
+        parser.add_argument("file1")
+        parser.add_argument("file2")
+        parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
+        parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
+        parser.add_argument('-i',"--ignore_isomerism",action="store_true",help="ignore geometric and stereometric isomerism when canonizing")
+
+        args=parser.parse_args()  
+
+        file1State,file2State=CheckValidity(args.file1,args.file2)
+        Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism)
+    else:
+        file1State=1
+        file2State=1
+        Calculate('testsets/test7/6.mol','testsets/test7/5.mol',saveMediates=True,no_isomerism=False)
