@@ -98,7 +98,7 @@ def SelectBestIndex(workset):
     indexNumbers=[]
     for number in set(currentIndexs):
         indexNumbers.append({"index":number,"count":currentIndexs.count(number)})
-    selectedItem=sorted(indexNumbers,key=lambda x:-x["count"])[0]
+    selectedItem=sorted(indexNumbers,key=lambda x:(-x["count"],-x["index"]))[0]
     return selectedItem["index"]
 
 def Refine(workset):
@@ -109,7 +109,7 @@ def Refine(workset):
         currentIndex=SelectBestIndex(workset)
         currentPartition=dictionaryForIndexs[currentIndex].copy()
         currentPartition.sort(key=lambda i:i.neighborIndexs)
-        changedIndex=[]
+        changedIndex=False
         lastIndexCollection=currentPartition[0].neighborIndexs
         i=0
         for (index,item) in enumerate(currentPartition):
@@ -120,21 +120,22 @@ def Refine(workset):
                 dictionaryForIndexs[currentIndex].remove(item)
                 item.currentIndex=currentIndex+i
                 AddItem(dictionaryForIndexs,currentIndex+i,item)
-                changedIndex.append(item)
+                changedIndex=True
         # Decide whether there are completed atoms
         for item in currentPartition:
             if len(dictionaryForIndexs[item.currentIndex])==1 and not item.isComplete:
                 item.isComplete=True
+                workset.remove(item)
                 # print(item.originalIndex,item.currentIndex,"becomes True in A") #
         # When no element in the current partition needs index change
-        if len(changedIndex)==0:
+        if not changedIndex:
             # Remove these elements from workset
             for item in currentPartition:
                 workset.remove(item)
         # When changes in current partition indexs
         else:
             # Update neighbor indexs of changed atoms' neighbors and recheck them
-            for item in changedIndex:
+            for item in currentPartition:
                 for neighbor in item.neighbors:
                     neighbor.updateNeighborIndexs()
                     if dictionaryForIndexs.__contains__(neighbor.currentIndex):
