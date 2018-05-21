@@ -144,7 +144,7 @@ def standardSVD(matrix):
     S[:len(s),:len(s)]=np.diag(s)
     return u,S,v
 
-def RMSD(m1,m2,mediates=0):
+def RMSD(m1,m2,output=False):
     m1Center=m1.sum(axis=0)/m1.shape[0]
     m2Center=m2.sum(axis=0)/m2.shape[0]
     p=m1-m1Center
@@ -156,12 +156,10 @@ def RMSD(m1,m2,mediates=0):
     e[2,2]=d
     u=np.dot(np.dot(wt.T,e),v.T)     # rotation matrix
     q=np.dot(q,u)      # transformed q coordinates
-    if mediates:
-        with open(mediates,'w') as f:
-            s="Transition Matrix:\n"+str(m1Center-m2Center) \
-            +"\nRotation Matrix:\n"+str(u)+"\nTransformed Coordinates:\n"+str(q)
-            f.write(s)
     rmsd=np.linalg.norm(p-q)/np.sqrt(m1.shape[0])
+    if output:
+        return rmsd,(m2Center-m1Center),u,q
+   
     return rmsd
 
 #  Sequence changing module
@@ -169,8 +167,12 @@ def RMSD(m1,m2,mediates=0):
 def SequenceExchanger(f1,f2,dictionary):
     sequence=[i["canonized"] for i in sorted(dictionary,key=lambda p:p["original"])]
     substitution=[i["original"] for i in sorted(dictionary,key=lambda p:p["canonized"])]
-    stereo=[i["item"].stereochemistry for i in sorted(dictionary,key=lambda p:p["canonized"])]
-    original_stereo=[i["item"].stereochemistry for i in sorted(dictionary,key=lambda p:p["original"])]
+    if dictionary[0].__contains__("item"):
+        stereo=[i["item"].stereochemistry for i in sorted(dictionary,key=lambda p:p["canonized"])]
+        original_stereo=[i["item"].stereochemistry for i in sorted(dictionary,key=lambda p:p["original"])]
+    else:
+        stereo=[0 for _ in dictionary]
+        original_stereo=[0 for _ in dictionary]
     # bondstereo=[bond.GetStereo() for bond in f1.GetBonds()]
     s_file=StringIO()
     s_file.write(Chem.MolToMolBlock(f1))

@@ -71,6 +71,7 @@ class atom:
                 if item.source.GetIdx() in (doubleBond.GetBeginAtomIdx(),doubleBond.GetEndAtomIdx())][0]
             self.doubleBondConnectAtom=doubleBondAtom
 
+
 def deepcopy(worklist):
     newlist=[]
     for item in worklist:
@@ -107,7 +108,7 @@ def Refine(workset):
         AddItem(dictionaryForIndexs,item.currentIndex,item)
     while len(workset)>0:        
         currentIndex=SelectBestIndex(workset)
-        currentPartition=dictionaryForIndexs[currentIndex].copy()
+        currentPartition=[items for items in dictionaryForIndexs[currentIndex] if items in workset]
         currentPartition.sort(key=lambda i:i.neighborIndexs)
         changedIndex=False
         lastIndexCollection=currentPartition[0].neighborIndexs
@@ -125,15 +126,16 @@ def Refine(workset):
         for item in currentPartition:
             if len(dictionaryForIndexs[item.currentIndex])==1 and not item.isComplete:
                 item.isComplete=True
-                workset.remove(item)
+                #workset.remove(item)
                 # print(item.originalIndex,item.currentIndex,"becomes True in A") #
         # When no element in the current partition needs index change
-        if not changedIndex:
+        #if not changedIndex:
             # Remove these elements from workset
-            for item in currentPartition:
-                workset.remove(item)
+        for item in currentPartition:
+            workset.remove(item)
         # When changes in current partition indexs
-        else:
+        #else:
+        if changedIndex:
             # Update neighbor indexs of changed atoms' neighbors and recheck them
             for item in currentPartition:
                 for neighbor in item.neighbors:
@@ -386,7 +388,7 @@ def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolec
             result.append(dictionary)
         return result
     else:
-        collection=unbrokenMolecule.copy()
+        collection=deepcopy(unbrokenMolecule)
         OrdinaryTieBreaking(collection)
         dictionary=[{"original":item.originalIndex,"canonized":item.currentIndex,"item":item} for item in collection]
         return dictionary,unbrokenMolecule
