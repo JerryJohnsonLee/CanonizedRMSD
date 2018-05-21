@@ -1,17 +1,22 @@
+#!/home/jerry/anaconda3/bin/python 
 import sys
-from time import clock
+import argparse
 
-from rdkit import Chem
+
 from collections import defaultdict
 import operator
 import sys
 
-from formatting import *
-import main
+try:
+    from rdkit import Chem
+    import formatting
+    import main
+except:
+    print("RDKit module not found in your Python! Please make sure RDKit is correctly installed.")
+    print("Please go to http://www.rdkit.org/docs/Install.html for more details about installation.")
+    sys.exit()
 
-def help():
-    print("Incorrect usage! Type -h to get help")
-    sys.exit(0)
+
 
 def Min(myList):
     indexes=list(range(len(myList)))
@@ -24,22 +29,31 @@ def Min(myList):
 
 
 def CheckValidity(f1,f2):
+    # state -1: cannot open  0: unrecognized file type   1: mol type   2: mol2 type
+    f1=f1.split("/")[-1]
+    f2=f2.split('/')[-1]
     if len(f1.split('.')) > 1:
-        state1=0
-        if f1.split('.')[1].strip() in ['sdf','mol','rxn']:
+        state1=-1
+        extension=f1.split('.')[1].strip().lower()
+        if extension in ['sdf','mol','rxn']:
             state1=1
+        elif extension in ['mol2','ml2']:
+            state1=2
     else:
-        state1=2
+        state1=0
     if len(f2.split('.')) > 1:
-        state2=0
-        if f2.split('.')[1].strip() in ['sdf','mol','rxn']:
+        state2=-1
+        extension=f2.split('.')[1].strip().lower()
+        if extension in ['sdf','mol','rxn']:
             state2=1
+        elif extension in ['mol2','ml2']:
+            state2=2
     else:
-        state2=2
-    if state1!=0 and state2!=0:
-        if state1==2 or state2==2:
+        state2=0
+    if state1>=0 and state2>=0:
+        if state1==0 or state2==0:
             print("\nWarning: Unknown file type! \n\nType -h to get supported file types.\n")
-        return 1
+        return state1,state2
     else:
         print("\nError: Unsupported file type! \n\nType -h to get supported file types.\n")
         sys.exit(0)
@@ -59,76 +73,109 @@ def OutputInterrelationship(collection,sequenceA,sequenceB):
     for item in collection:
         print(str(sequenceA.index(item[0]+1)+1).center(16)+"  "+str(sequenceB.index(item[1]+1)+1).center(16))
 
-def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False):  
+def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False):  
     if(saveMediates):
-        if(len(source1.split('.'))==2):
-            address1=source1.split('.')
-        elif(len(source1.split('.'))==1):
-            address1=[source1,'']
-        if(len(source2.split('.'))==2):
-            address2=source2.split('.')
-        elif(len(source2.split('.'))==1):
-            address2=[source2,'']
-        appending=[address1[0]+"_rdkit."+address1[1],address2[0]+"_rdkit."+address2[1],address1[0]+"_canonized."+address1[1],address2[0]+"_canonized."+address2[1]]
+        if(file1State):
+            address1=source1.split('.')[0]
+        else:
+            address1=source1
+        if(file2State):
+            address2=source2.split('.')[0]
+        else:
+            address2=source2
+        appending=[address1+"_rdkit.mol",address2+"_rdkit.mol",address1+"_canonized.mol",address2+"_canonized.mol"]
     else:
         appending=[0,0,0,0]
-    start_time=clock()
-    A,removedHA=removeHs(ConvertFromGaussianToRdkit(source1,appending[0]))
-    B,removedHB=removeHs(ConvertFromGaussianToRdkit(source2,appending[1]))
-    contentA=main.CanonizedSequenceRetriever(A)
-    contentB=main.CanonizedSequenceRetriever(B)
-    main.JudgeIdentity(contentA,contentB,start_time)
-    end_time_1=clock()
-    contentBseries=main.CanonizedSequenceRetriever(B,True)
-    canonizedA=SequenceExchanger(A,appending[2],contentA)
+    molA,removedHA=formatting.Read(source1,appending[0],file1State)
+    molB,removedHB=formatting.Read(source2,appending[1],file2State)    
+    
+    #start_time=clock()
+    contentA,_=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
+    contentB,unbrokenB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
+    canonizedA=formatting.SequenceExchanger(molA,appending[2],contentA)
+    if not main.JudgeIdentity(contentA,contentB):
+        if saveMediates:
+            formatting.SequenceExchanger(molB,appending[3],contentB)
+        print("Two input molecules are not identical!")
+        #print(clock()-start_time)
+        sys.exit()
+    print("Two input molecules are identical!")
+    #end_time_1=clock()
+    contentBseries=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB)    
     rmsdCollection=[]
     for contentB in contentBseries:        
-        canonizedB=SequenceExchanger(B,0,contentB)
-        (ma,ea)=FormMat(canonizedA)
-        (mb,eb)=FormMat(canonizedB)
-        if CheckElements(ea,eb):
-            rmsdCollection.append(RMSD(ma,mb))
+        canonizedB=formatting.SequenceExchanger(molB,0,contentB)
+        (ma,ea)=formatting.FormMat(canonizedA)
+        (mb,eb)=formatting.FormMat(canonizedB)
+        if formatting.CheckElements(ea,eb):
+            rmsdCollection.append(formatting.RMSD(ma,mb))
         else:
             break
     if len(rmsdCollection)!=0:
         minIndex,minimum=Min(rmsdCollection)
         print('RMSD='+str(minimum))
         if saveMediates:
-            canonizedB=SequenceExchanger(B,appending[3],contentBseries[minIndex])
-            RMSD(FormMat(canonizedA)[0],FormMat(canonizedB)[0],mediates="conversion_matrices")
+            canonizedB=formatting.SequenceExchanger(molB,appending[3],contentBseries[minIndex])
+            _,transition,rotation,coords=formatting.RMSD(formatting.FormMat(canonizedA)[0] \
+            ,formatting.FormMat(canonizedB)[0],True)
+            with open("conversion_matrices.log",'w') as f:
+                s="Transition Matrix:\n"+str(transition) \
+            +"\nRotation Matrix:\n"+str(rotation)+"\nTransformed Coordinates:\n"+str(coords)
+                f.write(s)
         if outputInterrelationship:
             OutputInterrelationship(GetInterrelationship(contentA,contentBseries[minIndex]),removedHA,removedHB)
-    end_time_2=clock()
-    print('judging time:%f,calculation time:%f'%(end_time_1-start_time,end_time_2-start_time))
+    #end_time_2=clock()
+    #print('judging time:%f,calculation time:%f'%(end_time_1-start_time,end_time_2-start_time))
+
+def GetConversion(molA,molB):
+    contentA,_=main.CanonizedSequenceRetriever(molA,no_isomerism=True)
+    contentB,unbrokenB=main.CanonizedSequenceRetriever(molB,no_isomerism=True)
+    canonizedA=formatting.SequenceExchanger(molA,0,contentA)
+    if not main.JudgeIdentity(contentA,contentB):
+        return None
+    contentBseries=main.CanonizedSequenceRetriever(molB,True,unbrokenMolecule=unbrokenB)
+    rmsdCollection=[]
+    for contentB in contentBseries:        
+        canonizedB=formatting.SequenceExchanger(molB,0,contentB)
+        ma,_=formatting.FormMat(canonizedA)
+        mb,_=formatting.FormMat(canonizedB)
+        rmsdCollection.append(formatting.RMSD(ma,mb))
+    
+    if len(rmsdCollection)!=0:
+        
+        minIndex,_=Min(rmsdCollection)
+        canonizedB=formatting.SequenceExchanger(molB,0,contentBseries[minIndex])
+        rmsd,transition,rotation,_=formatting.RMSD(formatting.FormMat(canonizedA)[0] \
+            ,formatting.FormMat(canonizedB)[0],True)
+        sortedA=[i["canonized"] for i in sorted(contentA,key=lambda p:p["original"])]
+        sortedB=[i["original"] for i in sorted(contentBseries[minIndex],key=lambda p:p["canonized"])]
+        mapping=dict()
+        for indexA,canonized in enumerate(sortedA):
+            mapping[indexA]=sortedB[canonized]  # {uncanonizedA: uncanonizedB}
+        return mapping,rmsd,transition,rotation
+
+
 
 if __name__=="__main__":
-    if len(sys.argv)==3:   
-        a=sys.argv[1]
-        b=sys.argv[2]
-        if CheckValidity(a,b):
-            Calculate(a,b)
-    elif len(sys.argv)==4:
-        a=sys.argv[1]
-        b=sys.argv[2] 
-        c=sys.argv[3]
-        saveMediates=False
-        outputRelations=False
-        if c[0]=='-':
-            if 'S' in c.upper():
-                saveMediates=True
-            if 'O' in c.upper():
-                outputRelations=True
-            Calculate(a,b,saveMediates,outputRelations)
-        else:
-            help()
-    elif len(sys.argv)>4:
-        print("Too many input arugments! Type -h to get help")
-        sys.exit(0)
-    elif len(sys.argv)==2:
-        if sys.argv[1].upper()=='-H':
-            print("\nCanonizedRMSD: \n   To calculate the RMSD of two molecules after canonizing them.\n\nUsage:\n   CanonizedRMSD.py File1 File2 [Options]\n\nOptions:\n   -s    Saving Intermediates (Not saving by default)\n   -o    Output interrelationship of corresponding atoms in File 1 and File 2 (Not outputting by default)\n\nSupported file types:\n   .mol | .sdf | .rxn\n")
-        else:
-            help()
-    else:
-        help()
+    global file1State
+    global file2State
+    DEBUG=False
+    if not DEBUG:
+        parser=argparse.ArgumentParser( \
+        description="to calculate the RMSD of two molecules after canonizing them. \
+        \n\nsupported file types:\n   .mol | .sdf | .rxn | .mol2 | .ml2 \n", \
+        formatter_class=argparse.RawTextHelpFormatter)
+        parser.add_argument("file1")
+        parser.add_argument("file2")
+        parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
+        parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
+        parser.add_argument('-i',"--ignore_isomerism",action="store_true",help="ignore geometric and stereometric isomerism when canonizing")
 
+        args=parser.parse_args()  
+
+        file1State,file2State=CheckValidity(args.file1,args.file2)
+        Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism)
+    else:
+        file1State=1
+        file2State=1
+        Calculate('/home/jerry/canonized_RMSD/testsets/test/5-1.mol','/home/jerry/canonized_RMSD/testsets/test/5-2.sdf',saveMediates=True,no_isomerism=False)
