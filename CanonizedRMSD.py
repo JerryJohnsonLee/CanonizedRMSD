@@ -1,4 +1,4 @@
-#!/home/jerry/anaconda3/bin/python 
+#!/usr/bin/env python
 import sys
 import argparse
 
@@ -73,7 +73,7 @@ def OutputInterrelationship(collection,sequenceA,sequenceB):
     for item in collection:
         print(str(sequenceA.index(item[0]+1)+1).center(16)+"  "+str(sequenceB.index(item[1]+1)+1).center(16))
 
-def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False):  
+def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False,no_alignment=False):  
     if(saveMediates):
         if(file1State):
             address1=source1.split('.')[0]
@@ -108,7 +108,7 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
         (ma,ea)=formatting.FormMat(canonizedA)
         (mb,eb)=formatting.FormMat(canonizedB)
         if formatting.CheckElements(ea,eb):
-            rmsdCollection.append(formatting.RMSD(ma,mb))
+            rmsdCollection.append(formatting.RMSD(ma,mb,no_alignment=no_alignment))
         else:
             break
     if len(rmsdCollection)!=0:
@@ -170,11 +170,15 @@ if __name__=="__main__":
         parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
         parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
         parser.add_argument('-i',"--ignore_isomerism",action="store_true",help="ignore geometric and stereometric isomerism when canonizing")
+        parser.add_argument('-a',"--no_alignment",action="store_true",help="do not apply molecule alignment by Kabsch algorithm when calculating RMSD")
 
         args=parser.parse_args()  
 
         file1State,file2State=CheckValidity(args.file1,args.file2)
-        Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism)
+        if args.save and args.no_alignment:
+            print("saving mode unavailable when alignment is not done.")
+            sys.exit()
+        Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.no_alignment)
     else:
         file1State=1
         file2State=1
