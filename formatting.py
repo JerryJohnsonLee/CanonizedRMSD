@@ -144,23 +144,26 @@ def standardSVD(matrix):
     S[:len(s),:len(s)]=np.diag(s)
     return u,S,v
 
-def RMSD(m1,m2,output=False):
-    m1Center=m1.sum(axis=0)/m1.shape[0]
-    m2Center=m2.sum(axis=0)/m2.shape[0]
-    p=m1-m1Center
-    q=m2-m2Center
-    a=np.dot(p.T,q)
-    v,s,wt=standardSVD(a)
-    d=np.sign(np.linalg.det(np.dot(v,wt).T))
-    e=np.eye(3)
-    e[2,2]=d
-    u=np.dot(np.dot(wt.T,e),v.T)     # rotation matrix
-    q=np.dot(q,u)      # transformed q coordinates
-    rmsd=np.linalg.norm(p-q)/np.sqrt(m1.shape[0])
-    if output:
-        return rmsd,(m2Center-m1Center),u,q
-   
-    return rmsd
+def RMSD(m1,m2,output=False,no_alignment=False):
+    if no_alignment:
+        return np.linalg.norm(m1-m2)/np.sqrt(m1.shape[0])
+    else:
+        m1Center=m1.sum(axis=0)/m1.shape[0]
+        m2Center=m2.sum(axis=0)/m2.shape[0]
+        p=m1-m1Center
+        q=m2-m2Center
+        a=np.dot(p.T,q)
+        v,s,wt=standardSVD(a)
+        d=np.sign(np.linalg.det(np.dot(v,wt).T))
+        e=np.eye(3)
+        e[2,2]=d
+        u=np.dot(np.dot(wt.T,e),v.T)     # rotation matrix
+        q=np.dot(q,u)      # transformed q coordinates
+        rmsd=np.linalg.norm(p-q)/np.sqrt(m1.shape[0])
+        if output:
+            return rmsd,(m2Center-m1Center),u,q
+    
+        return rmsd
 
 #  Sequence changing module
 
