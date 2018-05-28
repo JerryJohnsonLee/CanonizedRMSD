@@ -9,7 +9,7 @@ r_TYPE=2
 s_TYPE=1
 AROMATIC=7
 DOUBLE_BOND=Chem.rdchem.BondType.DOUBLE
-
+AROMATIC_BOND=Chem.rdchem.BondType.AROMATIC
 
 class atom:
     def __init__(self,a=None,OriginalIndex=0,CopyFrom=None):
@@ -304,7 +304,7 @@ def StereoAssigner(workset,firstTime=True):
                                         workset.add(neighbor)
                         if zCount:
                             Refine(workset.copy())
-            elif currentAtom.bonds.count(DOUBLE_BOND)==0:  # no double bond                   
+            elif currentAtom.bonds.count(DOUBLE_BOND)==0 and currentAtom.bonds.count(AROMATIC_BOND)==0:  # no double bond or aromatic bond                  
                 rCount=0        
                 if neighborCount>2 and len(set(currentAtom.neighborIndexs))==neighborCount:
                 # there is no same thing in current atom's neighbor list (implicit hydrogen included)                 
