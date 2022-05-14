@@ -1,5 +1,7 @@
 from rdkit import Chem
 import numpy as np
+import formatting
+import time
 
 R_TYPE=4
 S_TYPE=3
@@ -146,42 +148,67 @@ def Refine(workset):
                                 workset.add(item) 
 
 
-def BranchingTieBreaking(templateWorklist,worklistCollection):
+def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
     unbrokenIndexs=[]
     for item in templateWorklist:
         if not item.isComplete:
             unbrokenIndexs.append(item.currentIndex)
-    if len(unbrokenIndexs)==0:
-        worklistCollection.append(templateWorklist)
+    # Form dictionary for {index : Number}
+    indexNumbers=[]
+    for index in set(unbrokenIndexs):
+        indexNumbers.append({'index':index,'number':unbrokenIndexs.count(index)})
+    # Select the index with least occuring number while being as large as possible
+    selectedItem=sorted(indexNumbers,key=lambda p:(p['number'],-p['index']))[0]
+    selectedIndex=selectedItem['index']
+    selectedNumber=selectedItem['number']
+    import math
+    import itertools
+    permutations=list(itertools.permutations(range(selectedNumber)))
+    minRmsd=-1
+    canonizedMinB=None
+    contentMinB=None
+    List=None
+    for i in range(math.factorial(selectedNumber)):
+        newList=deepcopy(templateWorklist)
+        newSet=set()
+        indiceDistribution=permutations[i]
+        n=0
+        for j in newList:
+            if j.currentIndex==selectedIndex:
+                j.currentIndex+=indiceDistribution[n]
+                j.isComplete=True
+                n+=1
+            elif j.currentIndex in unbrokenIndexs:
+                newSet.add(j)
+        for j in newSet:
+            j.updateNeighborIndexs()
+        Refine(newSet)
+        contentB=[{"original":k.originalIndex,"canonized":k.currentIndex,"item":k} for k in newList]
+        canonizedB=formatting.SequenceExchanger(molB,0,contentB)
+        (mb,eb)=formatting.FormMat(canonizedB)
+        if formatting.CheckElements(ea,eb):
+            if (no_alignment):
+                rmsd=np.linalg.norm(ma-mb)/np.sqrt(ma.shape[0])
+            elif (qcp==False):
+                rmsd=formatting.kabsch_rmsd(ma,mb,no_alignment=no_alignment)
+            else:
+                MA=ma.A
+                MB=mb.A
+                rmsd=formatting.qcp_rmsd(MA,MB)
+        if minRmsd==-1 or minRmsd>rmsd:
+            minRmsd=rmsd
+            canonizedMinB=canonizedB
+            contentMinB=contentB
+            List=newList
+    complete=True
+    for item in newList:
+        if not item.isComplete:
+            complete=False
+            break
+    if complete:
+        return minRmsd,canonizedMinB,contentMinB
     else:
-        # Form dictionary for {index : Number}
-        indexNumbers=[]
-        for index in set(unbrokenIndexs):
-            indexNumbers.append({'index':index,'number':unbrokenIndexs.count(index)})
-        # Select the index with least occuring number while being as large as possible
-        selectedItem=sorted(indexNumbers,key=lambda p:(p['number'],-p['index']))[0]
-        selectedIndex=selectedItem['index']
-        selectedNumber=selectedItem['number']
-        import math
-        import itertools
-        permutations=list(itertools.permutations(range(selectedNumber)))
-        for i in range(math.factorial(selectedNumber)):
-            newList=deepcopy(templateWorklist)
-            newSet=set()
-            indiceDistribution=permutations[i]
-            n=0
-            for item in newList:
-                if item.currentIndex==selectedIndex:
-                    item.currentIndex+=indiceDistribution[n]
-                    item.isComplete=True
-                    n+=1
-                elif item.currentIndex in unbrokenIndexs:
-                    newSet.add(item)
-
-            for item in newSet:
-                item.updateNeighborIndexs()
-            Refine(newSet)
-            BranchingTieBreaking(newList,worklistCollection)
+        return BranchingTieBreaking(molB,List,ma,ea,no_alignment,qcp)
 
 def OrdinaryTieBreaking(worklist):
     unbrokenIndexs=[]
@@ -273,37 +300,38 @@ def StereoAssigner(workset,firstTime=True):
             if currentAtom.bonds.count(DOUBLE_BOND)==1 :  # one double bond, not assigned geometric tag
                 if neighborCount>1 and len(set(currentAtom.neighborIndexs))==neighborCount:
                     doubleBondAtom=currentAtom.doubleBondConnectAtom
-                    if len(doubleBondAtom.neighborIndexs)>1 and len(set(doubleBondAtom.neighborIndexs))==len(doubleBondAtom.neighborIndexs):
-                        # both sides of the double bond have different groups
-                        zCount=0
-                        doubleBondAtoms=[]
-                        for item in sameIndexAtoms:
-                            doubleBondAtom=item.doubleBondConnectAtom
-                            doubleBondAtoms.append(doubleBondAtom)
-                            geometricTag=DecideDoubleBondGeometric(item,doubleBondAtom)
-                            if geometricTag==Z_TYPE:
-                                zCount+=1
-                            item.stereochemistry=geometricTag
-                            doubleBondAtom.stereochemistry=geometricTag
-                        updated=True
-                        for atom1,atom2 in zip(sameIndexAtoms,doubleBondAtoms):
-                            if atom1 in workset:
-                                workset.remove(atom1)
-                            if atom2 in workset:
-                                workset.remove(atom2)
-                            
-                            if atom1.stereochemistry==Z_TYPE:
-                                # Z_TYPE atoms were updated their indices, while E_TYPE atoms keep their indices
-                                atom1.currentIndex+=len(sameIndexAtoms)-zCount
-                                atom2.currentIndex+=len(sameIndexAtoms)-zCount
-                                updateNeighborList=list(atom1.neighbors)
-                                updateNeighborList.extend(atom2.neighbors)
-                                for neighbor in updateNeighborList:
-                                    neighbor.updateNeighborIndexs()
-                                    if (not neighbor.isComplete) or neighbor.stereochemistry==0:
-                                        workset.add(neighbor)
-                        if zCount:
-                            Refine(workset.copy())
+                    if (doubleBondAtom):
+                        if len(doubleBondAtom.neighborIndexs)>1 and len(set(doubleBondAtom.neighborIndexs))==len(doubleBondAtom.neighborIndexs):
+                            # both sides of the double bond have different groups
+                            zCount=0
+                            doubleBondAtoms=[]
+                            for item in sameIndexAtoms:
+                                doubleBondAtom=item.doubleBondConnectAtom
+                                doubleBondAtoms.append(doubleBondAtom)
+                                geometricTag=DecideDoubleBondGeometric(item,doubleBondAtom)
+                                if geometricTag==Z_TYPE:
+                                    zCount+=1
+                                item.stereochemistry=geometricTag
+                                doubleBondAtom.stereochemistry=geometricTag
+                            updated=True
+                            for atom1,atom2 in zip(sameIndexAtoms,doubleBondAtoms):
+                                if atom1 in workset:
+                                    workset.remove(atom1)
+                                if atom2 in workset:
+                                    workset.remove(atom2)
+                                
+                                if atom1.stereochemistry==Z_TYPE:
+                                    # Z_TYPE atoms were updated their indices, while E_TYPE atoms keep their indices
+                                    atom1.currentIndex+=len(sameIndexAtoms)-zCount
+                                    atom2.currentIndex+=len(sameIndexAtoms)-zCount
+                                    updateNeighborList=list(atom1.neighbors)
+                                    updateNeighborList.extend(atom2.neighbors)
+                                    for neighbor in updateNeighborList:
+                                        neighbor.updateNeighborIndexs()
+                                        if (not neighbor.isComplete) or neighbor.stereochemistry==0:
+                                            workset.add(neighbor)
+                            if zCount:
+                                Refine(workset.copy())
             elif currentAtom.bonds.count(DOUBLE_BOND)==0 and currentAtom.bonds.count(AROMATIC_BOND)==0:  # no double bond or aromatic bond                  
                 rCount=0        
                 if neighborCount>2 and len(set(currentAtom.neighborIndexs))==neighborCount:
@@ -371,22 +399,16 @@ def Canonizer(molecule,no_isomerism=False):
         StereoAssigner(set(worklist),False)
     return worklist
 
-def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolecule=None):
+def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolecule=None,ma=None,ea=None,no_alignment=False,qcp=False):
     if not unbrokenMolecule:
         global molConf
-        molConf=mol.GetConformer()
         if mol==None:
             import sys
             sys.exit()
+        molConf=mol.GetConformer()
         unbrokenMolecule=Canonizer(mol,no_isomerism)
     if serial:
-        collection=[]
-        BranchingTieBreaking(unbrokenMolecule,collection)
-        result=[]
-        for canonized in collection:
-            dictionary=[{"original":item.originalIndex,"canonized":item.currentIndex,"item":item} for item in canonized]
-            result.append(dictionary)
-        return result
+        return BranchingTieBreaking(mol,unbrokenMolecule,ma,ea,no_alignment,qcp)
     else:
         collection=deepcopy(unbrokenMolecule)
         OrdinaryTieBreaking(collection)
@@ -403,13 +425,12 @@ def JudgeIdentity(serialA,serialB):
         atomB=atomBsource[0]
         if not (atomA.neighborIndexs == atomB.neighborIndexs \
             and atomA.stereochemistry==atomB.stereochemistry):
+            print(atomA.stereochemistry)
+            print(atomB.stereochemistry)
             return False
     return True
-
 
 if __name__=='__main__':
     
     content=Chem.MolFromMolFile('testsets/test4/1_rdkit.mol')
     CanonizedSequenceRetriever(content)
-
-
