@@ -1,8 +1,19 @@
+@article{spyrmsd2020,
+  Author = {Meli, Rocco and Biggin, Philip C.},
+  Journal = {Journal of Cheminformatics},
+  Number = {1},
+  Pages = {49},
+  Title = {spyrmsd: symmetry-corrected RMSD calculations in Python},
+  Volume = {12},
+  Year = {2020}
+}
 from io import StringIO
+from typing import Tuple
 
 from rdkit import Chem
+from scipy import optimize
 import numpy as np
-
+import os
 
 R_TYPE=4
 S_TYPE=3
@@ -44,7 +55,7 @@ def ConvertFromGaussianToRdkit(f1,f2):
     s_file.close()
     return string
 
-def removeHs(content):
+def removeHs(content,removeH):
     s_file=StringIO()
     s_file.write(content)
     s_file.seek(0)
@@ -65,7 +76,7 @@ def removeHs(content):
     for _ in range(0,nAtoms):
         line=s_file.readline()
         Atoms.append(line)
-        if 'H  ' != line[31:34]:
+        if 'H  ' != line[31:34] or removeH==False:
             content.append(line)
             sequence.append(index)
             index+=1
@@ -87,6 +98,114 @@ def removeHs(content):
 
 
 #RMSD_module
+
+def center_of_geometry(coordinates: np.ndarray) -> np.ndarray:
+    #Center of geometry.
+    assert coordinates.shape[1] == 3
+    return np.mean(coordinates, axis=0)
+
+def center(coordinates: np.ndarray) -> np.ndarray:
+    #Center coordinates.
+    return coordinates - center_of_geometry(coordinates)
+
+def M_mtx(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+    #Compute inner product between coordinate matrices.
+    return B.T @ A
+
+def K_mtx(M):
+    #Compute symmetric key matrix.
+    assert M.shape == (3, 3)
+    S_xx = M[0, 0]
+    S_xy = M[0, 1]
+    S_xz = M[0, 2]
+    S_yx = M[1, 0]
+    S_yy = M[1, 1]
+    S_yz = M[1, 2]
+    S_zx = M[2, 0]
+    S_zy = M[2, 1]
+    S_zz = M[2, 2]
+    # p = plus, m = minus
+    S_xx_yy_zz_ppp = S_xx + S_yy + S_zz
+    S_yz_zy_pm = S_yz - S_zy
+    S_zx_xz_pm = S_zx - S_xz
+    S_xy_yx_pm = S_xy - S_yx
+    S_xx_yy_zz_pmm = S_xx - S_yy - S_zz
+    S_xy_yx_pp = S_xy + S_yx
+    S_zx_xz_pp = S_zx + S_xz
+    S_xx_yy_zz_mpm = -S_xx + S_yy - S_zz
+    S_yz_zy_pp = S_yz + S_zy
+    S_xx_yy_zz_mmp = -S_xx - S_yy + S_zz
+    return np.array(
+        [
+            [S_xx_yy_zz_ppp, S_yz_zy_pm, S_zx_xz_pm, S_xy_yx_pm],
+            [S_yz_zy_pm, S_xx_yy_zz_pmm, S_xy_yx_pp, S_zx_xz_pp],
+            [S_zx_xz_pm, S_xy_yx_pp, S_xx_yy_zz_mpm, S_yz_zy_pp],
+            [S_xy_yx_pm, S_zx_xz_pp, S_yz_zy_pp, S_xx_yy_zz_mmp],
+        ]
+    )
+
+
+def coefficients(M: np.ndarray, K: np.ndarray) -> Tuple[float, float, float]:
+    #Compute quaternion polynomial coefficients.
+    c2 = -2 * np.trace(M.T @ M)
+    c1 = -8 * np.linalg.det(M)  # TODO: Slow?
+    c0 = np.linalg.det(K)  # TODO: Slow?
+    return c2, c1, c0
+
+
+def lambda_max(Ga: float, Gb: float, c2: float, c1: float, c0: float) -> float:
+    #Find largest root of the quaternion polynomial.
+    def P(x):
+        #Quaternion polynomial
+        return x ** 4 + c2 * x ** 2 + c1 * x + c0
+    def dP(x):
+        #Fist derivative of the quaternion polynomial
+        return 4 * x ** 3 + 2 * c2 * x + c1
+    x0 = (Ga + Gb) * 0.5
+    lmax = optimize.newton(P, x0, fprime=dP)
+    return lmax
+
+
+def _lambda_max_eig(K: np.ndarray) -> float:
+    #Find largest eigenvalue of :math:`K`.
+    e, _ = np.linalg.eig(K)
+    return max(e)
+
+
+def qcp_rmsd(a: np.ndarray, b: np.ndarray, atol: float = 1e-9) -> float:
+    #Compute RMSD using the quaternion polynomial method.
+    
+    A = center(a)
+    B = center(b)
+
+    assert A.shape == B.shape
+
+    N = A.shape[0]
+
+    Ga = np.trace(A.T @ A)
+    Gb = np.trace(B.T @ B)
+
+    M = M_mtx(A, B)
+    K = K_mtx(M)
+
+    c2, c1, c0 = coefficients(M, K)
+
+    try:
+        # Fast calculation of the largest eigenvalue of K as root of the characteristic
+        # polynomial.
+        l_max = lambda_max(Ga, Gb, c2, c1, c0)
+    except RuntimeError:  # Newton method fails to converge; see GitHub Issue #35
+        # Fallback to (slower) explicit calculation of the largest eigenvalue of K
+        l_max = _lambda_max_eig(K)
+
+    s = Ga + Gb - 2 * l_max
+
+    if abs(s) < atol:  # Avoid numerical errors when Ga + Gb = 2 * l_max
+        rmsd = 0.0
+    else:
+        rmsd = np.sqrt(s / N)
+
+    return rmsd
 
 def FormMat(address):
     if ('\n' in address):
@@ -110,7 +229,7 @@ def FormMat(address):
         elements.append(l[31:34])
     return (np.matrix(points),elements)
 
-def GetIndexList(file):
+def GetIndexList(file,removeHs):
     # get the non-H atom indices and form a list
     with open(file) as f:
         line=f.readline().strip()
@@ -120,7 +239,10 @@ def GetIndexList(file):
         sequence=[]
         while line[-4:]!="BOND":
             line=f.readline().strip()
-            if line[-1]!="H":
+            if (removeHs):
+                if line[-1]!="H":
+                    sequence.append(index)
+            else:
                 sequence.append(index)
             index+=1
     del sequence[-1]
@@ -144,7 +266,7 @@ def standardSVD(matrix):
     S[:len(s),:len(s)]=np.diag(s)
     return u,S,v
 
-def RMSD(m1,m2,output=False,no_alignment=False):
+def kabsch_rmsd(m1,m2,output=False,no_alignment=False):
     if no_alignment:
         return np.linalg.norm(m1-m2)/np.sqrt(m1.shape[0])
     else:
@@ -235,33 +357,43 @@ def SequenceExchanger(f1,f2,dictionary):
     s_file.close()
     return string
 
-def ReadFromMol(file,appending):
-    A,removedHA=removeHs(ConvertFromGaussianToRdkit(file,appending))
-    molA=Chem.MolFromMolBlock(A)
-    return molA,removedHA
+def ReadFromMol(file,appending,removeH):
+    oldA,A=removeHs(ConvertFromGaussianToRdkit(file,appending),removeH)
+    molA=Chem.MolFromMolBlock(oldA,removeHs=removeH)
+    return molA,A
 
-def ReadFromMol2(file):
-    molA=Chem.MolFromMol2File(file)
-    removedHA=GetIndexList(file)
-    return molA,removedHA
+def ReadFromMol2(file,removeH):
+    molA=Chem.MolFromMol2File(file,removeHs=removeH)
+    A=GetIndexList(file,removeH)
+    return molA,A
 
-def Read(file,appending,fileState):
+def ReadFromMol3(file,appending,removeH):
+    molA = Chem.MolFromPDBFile(file,removeHs=removeH)
+    M='PdbToMol.mol'
+    Chem.MolToMolFile(molA,M)
+    oldA,A=removeHs(ConvertFromGaussianToRdkit(M,appending),removeH)
+    os.remove(M)
+    return molA,A
+
+def Read(file,appending,fileState,removeH):
     if fileState==1:
-        mol,removedH=ReadFromMol(file,appending)
+        mol,M=ReadFromMol(file,appending,removeH)
     elif fileState==2:
-        mol,removedH=ReadFromMol2(file)
+        mol,M=ReadFromMol2(file,removeH)
+    elif fileState==3:
+        mol,M=ReadFromMol3(file,appending,removeH)
     elif fileState==0:
         try:
-            mol,removedH=ReadFromMol(file,appending)
+            mol,M=ReadFromMol(file,appending,removeH)
         except:
             try:
-                mol,removedH=ReadFromMol2(file)
+                mol,M=ReadFromMol2(file,removeH)
             except:
                 print("Unsupported file: %s"%file)
                 import sys
                 sys.exit()
     # Chem.Kekulize(mol)
-    return mol,removedH
+    return mol,M
 
 if __name__=="__main__":
     print(GetIndexList("testsets/test4/r_rdkit.mol2"))
