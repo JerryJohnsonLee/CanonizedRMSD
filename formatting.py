@@ -383,8 +383,22 @@ def Read(file,appending,fileState,removeH):
                 print("Unsupported file: %s"%file)
                 import sys
                 sys.exit()
-    Chem.SanitizeMol(mol)
+    
+    # partial sanitization to make sure necessary molecular properties are calculated
+    mol.UpdatePropertyCache(strict=False)
+    sanitization_result = Chem.SanitizeMol(mol,sanitizeOps=Chem.SanitizeFlags.SANITIZE_FINDRADICALS| \
+                                     Chem.SanitizeFlags.SANITIZE_KEKULIZE| \
+                                     Chem.SanitizeFlags.SANITIZE_SETAROMATICITY| \
+                                     Chem.SanitizeFlags.SANITIZE_SETCONJUGATION| \
+                                     Chem.SanitizeFlags.SANITIZE_SETHYBRIDIZATION| \
+                                     Chem.SanitizeFlags.SANITIZE_SYMMRINGS,
+                                     catchErrors=True)
+    if sanitization_result != Chem.SanitizeFlags.SANITIZE_NONE:
+        print("Cannot sanitize file: %s"%file)
+        import sys
+        sys.exit()
     return mol,M
+
 
 if __name__=="__main__":
     print(GetIndexList("testsets/test4/r_rdkit.mol2"))
