@@ -1,6 +1,7 @@
 from rdkit import Chem
 import numpy as np
 import formatting
+import os
 import time
 
 R_TYPE=4
@@ -429,6 +430,23 @@ def JudgeIdentity(serialA,serialB):
             print(atomB.stereochemistry)
             return False
     return True
+
+def CheckValidity(filename):
+    # state -1: cannot open  0: unrecognized file type   1: mol type   2: mol2 type   3: pdb type
+    f1 = os.path.basename(filename)
+    if len(f1.split('.')) > 1:
+        state = -1
+        extension=f1.split('.')[1].strip().lower()
+        if extension in ['sdf','mol','rxn']:
+            state = 1
+        elif extension in ['mol2','ml2']:
+            state = 2
+        elif extension in ['pdb']:
+            state = 3
+    else:
+        state = 0
+    return state
+
 
 if __name__=='__main__':
     
