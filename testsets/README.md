@@ -4,7 +4,7 @@ Structures under folders a-e are examples used for testing the function of calcu
 
 Molecular information:
 
-|Molecule index|Formula|Number of atoms|Minimal RMSD($\AA$)|
+|Molecule index|Formula|Number of atoms|Minimal RMSD(Å)|
 |-------------|--------|-----------------|----------------|
 |a|$\mathrm{C_2H_6O}$|9|0|
 |b|$\mathrm{C_7H_{14}}$|21|0|
