@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 import sys
 import argparse
+import time
 
-
-from collections import defaultdict
-import operator
-import sys
+import numpy as np
 
 try:
     from rdkit import Chem
@@ -27,37 +25,6 @@ def Min(myList):
     return minimum
 
 
-
-def CheckValidity(f1,f2):
-    # state -1: cannot open  0: unrecognized file type   1: mol type   2: mol2 type
-    f1=f1.split("/")[-1]
-    f2=f2.split('/')[-1]
-    if len(f1.split('.')) > 1:
-        state1=-1
-        extension=f1.split('.')[1].strip().lower()
-        if extension in ['sdf','mol','rxn']:
-            state1=1
-        elif extension in ['mol2','ml2']:
-            state1=2
-    else:
-        state1=0
-    if len(f2.split('.')) > 1:
-        state2=-1
-        extension=f2.split('.')[1].strip().lower()
-        if extension in ['sdf','mol','rxn']:
-            state2=1
-        elif extension in ['mol2','ml2']:
-            state2=2
-    else:
-        state2=0
-    if state1>=0 and state2>=0:
-        if state1==0 or state2==0:
-            print("\nWarning: Unknown file type! \n\nType -h to get supported file types.\n")
-        return state1,state2
-    else:
-        print("\nError: Unsupported file type! \n\nType -h to get supported file types.\n")
-        sys.exit(0)
-
 def GetInterrelationship(canonizedCollection1,canonizedCollection2):
     result=[]
     for item in canonizedCollection1:
@@ -73,7 +40,7 @@ def OutputInterrelationship(collection,sequenceA,sequenceB):
     for item in collection:
         print(str(sequenceA.index(item[0]+1)+1).center(16)+"  "+str(sequenceB.index(item[1]+1)+1).center(16))
 
-def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False,no_alignment=False):  
+def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False,no_alignment=False,qcp=False,removeHs=False):  
     if(saveMediates):
         if(file1State):
             address1=source1.split('.')[0]
@@ -86,46 +53,50 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
         appending=[address1+"_rdkit.mol",address2+"_rdkit.mol",address1+"_canonized.mol",address2+"_canonized.mol"]
     else:
         appending=[0,0,0,0]
-    molA,removedHA=formatting.Read(source1,appending[0],file1State)
-    molB,removedHB=formatting.Read(source2,appending[1],file2State)    
-    
+    molA,A=formatting.Read(source1,appending[0],file1State,removeHs)
+    molB,B=formatting.Read(source2,appending[1],file2State,removeHs)
+    molRA=Chem.RemoveHs(molA)
+    molRB=Chem.RemoveHs(molB)
     #start_time=clock()
     contentA,_=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
     contentB,unbrokenB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
     canonizedA=formatting.SequenceExchanger(molA,appending[2],contentA)
-    if not main.JudgeIdentity(contentA,contentB):
+    contentRA,_=main.CanonizedSequenceRetriever(molRA,False,no_isomerism)
+    contentRB,_=main.CanonizedSequenceRetriever(molRB,False,no_isomerism)
+    if not main.JudgeIdentity(contentRA,contentRB):
         if saveMediates:
             formatting.SequenceExchanger(molB,appending[3],contentB)
         print("Two input molecules are not identical!")
         #print(clock()-start_time)
         sys.exit()
     print("Two input molecules are identical!")
-    #end_time_1=clock()
-    contentBseries=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB)    
-    rmsdCollection=[]
-    for contentB in contentBseries:        
-        canonizedB=formatting.SequenceExchanger(molB,0,contentB)
-        (ma,ea)=formatting.FormMat(canonizedA)
-        (mb,eb)=formatting.FormMat(canonizedB)
+    (ma,ea)=formatting.FormMat(canonizedA)
+    try:
+        minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,no_alignment,qcp) 
+    except:
+        contentMinB=contentB
+        canonizedMinB=formatting.SequenceExchanger(molB,appending[3],contentMinB)
+        (mb,eb)=formatting.FormMat(canonizedMinB)
         if formatting.CheckElements(ea,eb):
-            rmsdCollection.append(formatting.RMSD(ma,mb,no_alignment=no_alignment))
-        else:
-            break
-    if len(rmsdCollection)!=0:
-        minIndex,minimum=Min(rmsdCollection)
-        print('RMSD='+str(minimum))
-        if saveMediates:
-            canonizedB=formatting.SequenceExchanger(molB,appending[3],contentBseries[minIndex])
-            _,transition,rotation,coords=formatting.RMSD(formatting.FormMat(canonizedA)[0] \
-            ,formatting.FormMat(canonizedB)[0],True)
-            with open("conversion_matrices.log",'w') as f:
-                s="Transition Matrix:\n"+str(transition) \
-            +"\nRotation Matrix:\n"+str(rotation)+"\nTransformed Coordinates:\n"+str(coords)
-                f.write(s)
-        if outputInterrelationship:
-            OutputInterrelationship(GetInterrelationship(contentA,contentBseries[minIndex]),removedHA,removedHB)
-    #end_time_2=clock()
-    #print('judging time:%f,calculation time:%f'%(end_time_1-start_time,end_time_2-start_time))
+            if (no_alignment):
+                minRmsd=np.linalg.norm(ma-mb)/np.sqrt(ma.shape[0])
+            elif (qcp==False):
+                minRmsd=formatting.kabsch_rmsd(ma,mb,no_alignment=no_alignment)
+            else:
+                MA=ma.A
+                MB=mb.A
+                minRmsd=formatting.qcp_rmsd(MA,MB)
+    print('RMSD='+str(minRmsd))
+    if saveMediates:
+        canonizedB=formatting.SequenceExchanger(molB,appending[3],contentMinB)
+        _,transition,rotation,coords=formatting.RMSD(formatting.FormMat(canonizedA)[0] \
+        ,formatting.FormMat(canonizedB)[0],True)
+        with open("conversion_matrices.log",'w') as f:
+            s="Transition Matrix:\n"+str(transition) \
+        +"\nRotation Matrix:\n"+str(rotation)+"\nTransformed Coordinates:\n"+str(coords)
+        f.write(s)
+    if outputInterrelationship:
+        OutputInterrelationship(GetInterrelationship(contentA,contentMinB),A,B)
 
 def GetConversion(molA,molB):
     contentA,_=main.CanonizedSequenceRetriever(molA,no_isomerism=True)
@@ -163,22 +134,34 @@ if __name__=="__main__":
     if not DEBUG:
         parser=argparse.ArgumentParser( \
         description="to calculate the RMSD of two molecules after canonizing them. \
-        \n\nsupported file types:\n   .mol | .sdf | .rxn | .mol2 | .ml2 \n", \
+        \n\nsupported file types:\n   .mol | .sdf | .rxn | .mol2 | .ml2  | .pdb\n", \
         formatter_class=argparse.RawTextHelpFormatter)
         parser.add_argument("file1")
         parser.add_argument("file2")
         parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
         parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
         parser.add_argument('-i',"--ignore_isomerism",action="store_true",help="ignore geometric and stereometric isomerism when canonizing")
-        parser.add_argument('-a',"--no_alignment",action="store_true",help="do not apply molecule alignment by Kabsch algorithm when calculating RMSD")
+        parser.add_argument('-na',"--no_alignment",action="store_true",help="do not apply molecule alignment Kabsch or QCP algorithm when calculating RMSD")
+        parser.add_argument('-alg', "--algorithm", choices=["Kabsch","QCP"],default="Kabsch",help="algorithm to calculate RMSD, default to Kabsch")
+        parser.add_argument('-r',"--removeHs",action="store_true",help="remove H atoms")
 
         args=parser.parse_args()  
 
-        file1State,file2State=CheckValidity(args.file1,args.file2)
+        # check file format and validity
+        file1State = main.CheckValidity(args.file1)
+        file2State = main.CheckValidity(args.file2)
+        if file1State >= 0 and file2State >= 0:
+            if file1State == 0 or file2State == 0:
+                print("\nWarning: Unknown file type! \n\nType -h to get supported file types.\n")
+        else:
+            print("\nError: Unsupported file type! \n\nType -h to get supported file types.\n")
+            sys.exit(0)
+
         if args.save and args.no_alignment:
             print("saving mode unavailable when alignment is not done.")
             sys.exit()
-        Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.no_alignment)
+        use_qcp = (args.algorithm == "QCP")
+        Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.no_alignment,use_qcp,args.removeHs)
     else:
         file1State=1
         file2State=1
