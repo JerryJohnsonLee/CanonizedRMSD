@@ -2,6 +2,7 @@ from io import StringIO
 from typing import Tuple
 
 from rdkit import Chem
+from rdkit.Chem.rdmolops import FastFindRings
 from scipy import optimize
 import numpy as np
 import os
@@ -350,16 +351,16 @@ def SequenceExchanger(f1,f2,dictionary):
 
 def ReadFromMol(file,appending,removeH):
     oldA,A=removeHs(ConvertFromGaussianToRdkit(file,appending),removeH)
-    molA=Chem.MolFromMolBlock(oldA,removeHs=removeH)
+    molA=Chem.MolFromMolBlock(oldA,removeHs=removeH, sanitize=False)
     return molA,A
 
 def ReadFromMol2(file,removeH):
-    molA=Chem.MolFromMol2File(file,removeHs=removeH)
+    molA=Chem.MolFromMol2File(file,removeHs=removeH, sanitize=False)
     A=GetIndexList(file,removeH)
     return molA,A
 
 def ReadFromMol3(file,appending,removeH):
-    molA = Chem.MolFromPDBFile(file,removeHs=removeH)
+    molA = Chem.MolFromPDBFile(file,removeHs=removeH, sanitize=False)
     M='PdbToMol.mol'
     Chem.MolToMolFile(molA,M)
     oldA,A=removeHs(ConvertFromGaussianToRdkit(M,appending),removeH)
@@ -383,7 +384,7 @@ def Read(file,appending,fileState,removeH):
                 print("Unsupported file: %s"%file)
                 import sys
                 sys.exit()
-    # Chem.Kekulize(mol)
+    Chem.SanitizeMol(mol)
     return mol,M
 
 if __name__=="__main__":
