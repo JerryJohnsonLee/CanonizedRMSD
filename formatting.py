@@ -2,7 +2,6 @@ from io import StringIO
 from typing import Tuple
 
 from rdkit import Chem
-from rdkit.Chem.rdmolops import FastFindRings
 from scipy import optimize
 import numpy as np
 import os

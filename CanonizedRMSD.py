@@ -25,41 +25,6 @@ def Min(myList):
     return minimum
 
 
-
-def CheckValidity(f1,f2):
-    # state -1: cannot open  0: unrecognized file type   1: mol type   2: mol2 type
-    f1=f1.split("/")[-1]
-    f2=f2.split('/')[-1]
-    if len(f1.split('.')) > 1:
-        state1=-1
-        extension=f1.split('.')[1].strip().lower()
-        if extension in ['sdf','mol','rxn']:
-            state1=1
-        elif extension in ['mol2','ml2']:
-            state1=2
-        elif extension in ['pdb']:
-            state1=3
-    else:
-        state1=0
-    if len(f2.split('.')) > 1:
-        state2=-1
-        extension=f2.split('.')[1].strip().lower()
-        if extension in ['sdf','mol','rxn']:
-            state2=1
-        elif extension in ['mol2','ml2']:
-            state2=2
-        elif extension in ['pdb']:
-            state2=3
-    else:
-        state2=0
-    if state1>=0 and state2>=0:
-        if state1==0 or state2==0:
-            print("\nWarning: Unknown file type! \n\nType -h to get supported file types.\n")
-        return state1,state2
-    else:
-        print("\nError: Unsupported file type! \n\nType -h to get supported file types.\n")
-        sys.exit(0)
-
 def GetInterrelationship(canonizedCollection1,canonizedCollection2):
     result=[]
     for item in canonizedCollection1:
@@ -169,24 +134,34 @@ if __name__=="__main__":
     if not DEBUG:
         parser=argparse.ArgumentParser( \
         description="to calculate the RMSD of two molecules after canonizing them. \
-        \n\nsupported file types:\n   .mol | .sdf | .rxn | .mol2 | .ml2 \n", \
+        \n\nsupported file types:\n   .mol | .sdf | .rxn | .mol2 | .ml2  | .pdb\n", \
         formatter_class=argparse.RawTextHelpFormatter)
         parser.add_argument("file1")
         parser.add_argument("file2")
         parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
         parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
         parser.add_argument('-i',"--ignore_isomerism",action="store_true",help="ignore geometric and stereometric isomerism when canonizing")
-        parser.add_argument('-a',"--no_alignment",action="store_true",help="do not apply molecule alignment Kabsch or QCP algorithm when calculating RMSD")
-        parser.add_argument('-q',"--qcp",action="store_true",help="use QCP algorithm instead of Kabsch algorithm")
+        parser.add_argument('-na',"--no_alignment",action="store_true",help="do not apply molecule alignment Kabsch or QCP algorithm when calculating RMSD")
+        parser.add_argument('-alg', "--algorithm", choices=["Kabsch","QCP"],default="Kabsch",help="algorithm to calculate RMSD, default to Kabsch")
         parser.add_argument('-r',"--removeHs",action="store_true",help="remove H atoms")
 
         args=parser.parse_args()  
 
-        file1State,file2State=CheckValidity(args.file1,args.file2)
+        # check file format and validity
+        file1State = main.CheckValidity(args.file1)
+        file2State = main.CheckValidity(args.file2)
+        if file1State >= 0 and file2State >= 0:
+            if file1State == 0 or file2State == 0:
+                print("\nWarning: Unknown file type! \n\nType -h to get supported file types.\n")
+        else:
+            print("\nError: Unsupported file type! \n\nType -h to get supported file types.\n")
+            sys.exit(0)
+
         if args.save and args.no_alignment:
             print("saving mode unavailable when alignment is not done.")
             sys.exit()
-        Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.no_alignment,args.qcp,args.removeHs)
+        use_qcp = (args.algorithm == "QCP")
+        Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.no_alignment,use_qcp,args.removeHs)
     else:
         file1State=1
         file2State=1
