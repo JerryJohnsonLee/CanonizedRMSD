@@ -89,12 +89,12 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
     print('RMSD='+str(minRmsd))
     if saveMediates:
         canonizedB=formatting.SequenceExchanger(molB,appending[3],contentMinB)
-        _,transition,rotation,coords=formatting.RMSD(formatting.FormMat(canonizedA)[0] \
+        _,transition,rotation,coords=formatting.kabsch_rmsd(formatting.FormMat(canonizedA)[0] \
         ,formatting.FormMat(canonizedB)[0],True)
         with open("conversion_matrices.log",'w') as f:
             s="Transition Matrix:\n"+str(transition) \
-        +"\nRotation Matrix:\n"+str(rotation)+"\nTransformed Coordinates:\n"+str(coords)
-        f.write(s)
+        +"\nRotation Matrix:\n"+str(rotation)+"\nTransformed Coordinates for molecule 2:\n"+str(coords)
+            f.write(s)
     if outputInterrelationship:
         OutputInterrelationship(GetInterrelationship(contentA,contentMinB),A,B)
 
@@ -110,13 +110,13 @@ def GetConversion(molA,molB):
         canonizedB=formatting.SequenceExchanger(molB,0,contentB)
         ma,_=formatting.FormMat(canonizedA)
         mb,_=formatting.FormMat(canonizedB)
-        rmsdCollection.append(formatting.RMSD(ma,mb))
+        rmsdCollection.append(formatting.kabsch_rmsd(ma,mb))
     
     if len(rmsdCollection)!=0:
         
         minIndex,_=Min(rmsdCollection)
         canonizedB=formatting.SequenceExchanger(molB,0,contentBseries[minIndex])
-        rmsd,transition,rotation,_=formatting.RMSD(formatting.FormMat(canonizedA)[0] \
+        rmsd,transition,rotation,_=formatting.kabsch_rmsd(formatting.FormMat(canonizedA)[0] \
             ,formatting.FormMat(canonizedB)[0],True)
         sortedA=[i["canonized"] for i in sorted(contentA,key=lambda p:p["original"])]
         sortedB=[i["original"] for i in sorted(contentBseries[minIndex],key=lambda p:p["canonized"])]

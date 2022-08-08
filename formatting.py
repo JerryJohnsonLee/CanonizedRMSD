@@ -274,7 +274,7 @@ def kabsch_rmsd(m1,m2,output=False,no_alignment=False):
         q=np.dot(q,u)      # transformed q coordinates
         rmsd=np.linalg.norm(p-q)/np.sqrt(m1.shape[0])
         if output:
-            return rmsd,(m2Center-m1Center),u,q
+            return rmsd,(m2Center-m1Center),u,q+m1Center
     
         return rmsd
 
