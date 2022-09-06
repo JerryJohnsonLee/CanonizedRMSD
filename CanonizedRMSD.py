@@ -143,7 +143,7 @@ if __name__=="__main__":
     parser.add_argument('-na',"--no_alignment",action="store_true",help="do not apply molecule alignment Kabsch or QCP algorithm when calculating RMSD")
     parser.add_argument('-alg', "--algorithm", choices=["Kabsch","QCP"],default="Kabsch",help="algorithm to calculate RMSD, default to Kabsch")
     parser.add_argument('-r',"--removeHs",action="store_true",help="remove H atoms")
-    parser.add_argument('-at',"--arbitrary_tiebreaking",action="store_true",help="apply an arbitrary tiebreaking, only for testing purposes")
+    parser.add_argument('-at',"--arbitrary_tiebreaking",action="store_true",help="apply an arbitrary tiebreaking, namely not performing branching tiebreaking")
 
     args=parser.parse_args()  
 

@@ -38,4 +38,6 @@ CanonizedRMSD.py file1 file2
     -q, --use QCP algorithm instead of Kabsch algorithm
 
     -r, --remove H atoms
+
+    -at, --arbitrary_tiebreaking  apply an arbitrary tiebreaking, namely not performing branching tiebreaking
 </pre>
