@@ -391,7 +391,8 @@ def Read(file,appending,fileState,removeH):
                                      Chem.SanitizeFlags.SANITIZE_SETAROMATICITY| \
                                      Chem.SanitizeFlags.SANITIZE_SETCONJUGATION| \
                                      Chem.SanitizeFlags.SANITIZE_SETHYBRIDIZATION| \
-                                     Chem.SanitizeFlags.SANITIZE_SYMMRINGS,
+                                     Chem.SanitizeFlags.SANITIZE_SYMMRINGS| \
+                                     Chem.SanitizeFlags.SANITIZE_ADJUSTHS,
                                      catchErrors=True)
     if sanitization_result != Chem.SanitizeFlags.SANITIZE_NONE:
         print("Cannot sanitize file: %s"%file)

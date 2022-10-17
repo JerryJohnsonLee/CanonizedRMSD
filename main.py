@@ -154,6 +154,21 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
     for item in templateWorklist:
         if not item.isComplete:
             unbrokenIndexs.append(item.currentIndex)
+    # when there is no unbroken index, simply calculate RMSD and return
+    if len(unbrokenIndexs)==0:
+        contentB=[{"original":k.originalIndex,"canonized":k.currentIndex,"item":k} for k in templateWorklist]
+        canonizedB=formatting.SequenceExchanger(molB,0,contentB)
+        (mb,eb)=formatting.FormMat(canonizedB)
+        if formatting.CheckElements(ea,eb):
+            if (no_alignment):
+                rmsd=np.linalg.norm(ma-mb)/np.sqrt(ma.shape[0])
+            elif (qcp==False):
+                rmsd=formatting.kabsch_rmsd(ma,mb,no_alignment=no_alignment)
+            else:
+                MA=ma.A
+                MB=mb.A
+                rmsd=formatting.qcp_rmsd(MA,MB)
+        return rmsd, canonizedB, contentB
     # Form dictionary for {index : Number}
     indexNumbers=[]
     for index in set(unbrokenIndexs):
@@ -426,8 +441,8 @@ def JudgeIdentity(serialA,serialB):
         atomB=atomBsource[0]
         if not (atomA.neighborIndexs == atomB.neighborIndexs \
             and atomA.stereochemistry==atomB.stereochemistry):
-            print(atomA.stereochemistry)
-            print(atomB.stereochemistry)
+            # print(atomA.stereochemistry)
+            # print(atomB.stereochemistry)
             return False
     return True
 

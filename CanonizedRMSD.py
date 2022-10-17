@@ -55,8 +55,13 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
         appending=[0,0,0,0]
     molA,A=formatting.Read(source1,appending[0],file1State,removeHs)
     molB,B=formatting.Read(source2,appending[1],file2State,removeHs)
-    molRA=Chem.RemoveHs(molA)
-    molRB=Chem.RemoveHs(molB)
+    try:
+        molRA=Chem.RemoveHs(molA)
+        molRB=Chem.RemoveHs(molB)
+    except:
+        molRA=molA
+        molRB=molB
+
     #start_time=clock()
     contentA,_=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
     contentB,unbrokenB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
