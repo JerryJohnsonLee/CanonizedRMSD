@@ -47,9 +47,7 @@ class atom:
         # new criterion:
         #    ***                ***                  *          *         *
         # atomicNum    largestNeighborElement   connection    isotope   charge
-        connection=self.degree+self.bonds.count(Chem.rdchem.BondType.DOUBLE) \
-          +self.bonds.count(Chem.rdchem.BondType.TRIPLE)*2 \
-          +self.bonds.count(Chem.rdchem.BondType.AROMATIC)*0.5
+        connection=self.degree
         largestNeighborElement=max([item.atomicNumber for item in self.neighbors])
         idCode=0
         idCode+=self.atomicNumber*1e6
