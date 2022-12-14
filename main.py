@@ -2,6 +2,7 @@ from rdkit import Chem
 import numpy as np
 import formatting
 import os
+import sys
 import time
 
 R_TYPE=4
@@ -20,7 +21,7 @@ class atom:
             self.source=a
             self.degree=a.GetDegree()
             self.atomicNumber=a.GetAtomicNum()
-            self.attatchedHs=a.GetTotalNumHs()
+            self.attatchedHs=a.GetTotalNumHs(includeNeighbors=True)
             self.charge=a.GetNumRadicalElectrons()
             self.isotope=a.GetIsotope()
             self.stereochemistry=0
@@ -42,21 +43,27 @@ class atom:
             self.isComplete=CopyFrom.isComplete
             self.stereochemistry=CopyFrom.stereochemistry
             self.doubleBondConnectAtom=CopyFrom.doubleBondConnectAtom
+            self.idcode=CopyFrom.idcode
 
-    def assignIdCode(self):
+    def assignIdCode(self, loose_criterion=False):
         # new criterion:
-        #    ***                ***                  *          *         *
-        # atomicNum    largestNeighborElement   connection    isotope   charge
-        connection=self.degree+self.bonds.count(Chem.rdchem.BondType.DOUBLE) \
-          +self.bonds.count(Chem.rdchem.BondType.TRIPLE)*2 \
-          +self.bonds.count(Chem.rdchem.BondType.AROMATIC)*0.5
+        #    ***                ***                  *       *       *        *
+        # atomicNum    largestNeighborElement   connection  n_Hs  isotope   charge
+        if loose_criterion:
+            connection=self.degree
+        else:
+            connection=self.degree+self.bonds.count(Chem.rdchem.BondType.DOUBLE) \
+            +self.bonds.count(Chem.rdchem.BondType.TRIPLE)*2 \
+            +self.bonds.count(Chem.rdchem.BondType.AROMATIC)*0.5
         largestNeighborElement=max([item.atomicNumber for item in self.neighbors])
         idCode=0
-        idCode+=self.atomicNumber*1e6
-        idCode+=largestNeighborElement*1e3
-        idCode+=connection*100
+        idCode+=self.atomicNumber*1e7
+        idCode+=largestNeighborElement*1e4
+        idCode+=connection*1e3
+        idCode+=self.attatchedHs*100
         idCode+=self.isotope*10
-        idCode+=(self.charge+4)   # to avoid problem with negative charges
+        if not loose_criterion:
+            idCode+=(self.charge+4)   # to avoid problem with negative charges
         self.idcode=int(idCode)
 
     def completeNeighborElements(self):
@@ -196,6 +203,8 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
                 MA=ma.A
                 MB=mb.A
                 rmsd=formatting.qcp_rmsd(MA,MB)
+        else:
+            sys.exit()
         if minRmsd==-1 or minRmsd>rmsd:
             minRmsd=rmsd
             canonizedMinB=canonizedB
