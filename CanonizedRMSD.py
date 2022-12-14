@@ -74,7 +74,7 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
         print("Two input molecules are not identical!")
         #print(clock()-start_time)
         sys.exit()
-    print("Two input molecules are identical!")
+    print("Based on non-hydrogen molecule graph, the two input molecules are identical!")
     (ma,ea)=formatting.FormMat(canonizedA)
     if tiebreaking:
         minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,no_alignment,qcp) 
