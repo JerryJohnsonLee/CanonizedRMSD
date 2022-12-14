@@ -40,7 +40,7 @@ def OutputInterrelationship(collection,sequenceA,sequenceB):
     for item in collection:
         print(str(sequenceA.index(item[0]+1)+1).center(16)+"  "+str(sequenceB.index(item[1]+1)+1).center(16))
 
-def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False,no_alignment=False,qcp=False,removeHs=False,tiebreaking=True):  
+def Main(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False,no_alignment=False,qcp=False,removeHs=False,tiebreaking=True):  
     if(saveMediates):
         if(file1State):
             address1=source1.split('.')[0]
@@ -55,13 +55,28 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
         appending=[0,0,0,0]
     molA,A=formatting.Read(source1,appending[0],file1State,removeHs)
     molB,B=formatting.Read(source2,appending[1],file2State,removeHs)
-    try:
-        molRA=Chem.RemoveHs(molA)
-        molRB=Chem.RemoveHs(molB)
-    except:
-        molRA=molA
-        molRB=molB
+    result = Calculate(molA, molB, appending, saveMediates, no_isomerism, no_alignment, qcp, tiebreaking)
+    if result == -1:
+        print("Two input molecules are not identical!")
+        sys.exit()
+    else:
+        minRmsd, contentA, canonizedA, contentMinB = result
+    print('RMSD='+str(minRmsd))
+    if saveMediates:
+        canonizedB=formatting.SequenceExchanger(molB,appending[3],contentMinB)
+        _,transition,rotation,coords=formatting.kabsch_rmsd(formatting.FormMat(canonizedA)[0] \
+        ,formatting.FormMat(canonizedB)[0],True)
+        with open("conversion_matrices.log",'w') as f:
+            s="Transition Matrix:\n"+str(transition) \
+        +"\nRotation Matrix:\n"+str(rotation)+"\nTransformed Coordinates for molecule 2:\n"+str(coords)
+            f.write(s)
+    if outputInterrelationship:
+        OutputInterrelationship(GetInterrelationship(contentA,contentMinB),A,B)
 
+
+def Calculate(molA, molB, appending, saveMediates=False, no_isomerism=False, no_alignment=False, qcp=False, tiebreaking=True):
+    molRA=Chem.RemoveHs(molA)
+    molRB=Chem.RemoveHs(molB)
     #start_time=clock()
     contentA,_=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
     contentB,unbrokenB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
@@ -71,9 +86,7 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
     if not main.JudgeIdentity(contentRA,contentRB):
         if saveMediates:
             formatting.SequenceExchanger(molB,appending[3],contentB)
-        print("Two input molecules are not identical!")
-        #print(clock()-start_time)
-        sys.exit()
+        return -1
     print("Based on non-hydrogen molecule graph, the two input molecules are identical!")
     (ma,ea)=formatting.FormMat(canonizedA)
     if tiebreaking:
@@ -91,17 +104,8 @@ def Calculate(source1,source2,saveMediates=False,outputInterrelationship=False,n
                 MA=ma.A
                 MB=mb.A
                 minRmsd=formatting.qcp_rmsd(MA,MB)
-    print('RMSD='+str(minRmsd))
-    if saveMediates:
-        canonizedB=formatting.SequenceExchanger(molB,appending[3],contentMinB)
-        _,transition,rotation,coords=formatting.kabsch_rmsd(formatting.FormMat(canonizedA)[0] \
-        ,formatting.FormMat(canonizedB)[0],True)
-        with open("conversion_matrices.log",'w') as f:
-            s="Transition Matrix:\n"+str(transition) \
-        +"\nRotation Matrix:\n"+str(rotation)+"\nTransformed Coordinates for molecule 2:\n"+str(coords)
-            f.write(s)
-    if outputInterrelationship:
-        OutputInterrelationship(GetInterrelationship(contentA,contentMinB),A,B)
+    return minRmsd, contentA, canonizedA, contentMinB
+
 
 def GetConversion(molA,molB):
     contentA,_=main.CanonizedSequenceRetriever(molA,no_isomerism=True)
@@ -167,5 +171,5 @@ if __name__=="__main__":
         sys.exit()
     use_qcp = (args.algorithm == "QCP")
     branching_tiebreaking = not args.arbitrary_tiebreaking
-    Calculate(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.no_alignment,use_qcp,args.removeHs,branching_tiebreaking)
+    Main(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.no_alignment,use_qcp,args.removeHs,branching_tiebreaking)
 
