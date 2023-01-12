@@ -14,12 +14,14 @@ except:
     print("Please go to http://www.rdkit.org/docs/Install.html for more details about installation.")
     sys.exit()
 
-stereochemical_tags = ['/', 's', 'r', 'S', 'R', 'E', 'Z']
+stereochemical_tags = ['/', 's', 'r', 'S', 'R', 'E', 'Z', ':', '?']
 
-def canonize(file_path):
+def canonize(file_path, aromatize=False, stereo=False):
     fileState = main.CheckValidity(file_path)
-    molecule, _ = formatting.Read(file_path, 0, fileState, False)
-    content, _ = main.CanonizedSequenceRetriever(molecule)
+    molecule, _ = formatting.Read(file_path, 0, fileState, False,
+                aromatize=aromatize, assignRDKitStereo=stereo)
+    molecule_noH = Chem.RemoveHs(molecule)
+    content, _ = main.CanonizedSequenceRetriever(molecule_noH, stereo=stereo)
     return sorted(content,key=lambda x:x['original'])
 
 if __name__=="__main__":
@@ -33,9 +35,13 @@ if __name__=="__main__":
         parser.add_argument("file")
         parser.add_argument("-o", "--output", default=None,\
              help="output file name. When not specified, the output will be printed to the screen.")
+        parser.add_argument("-r", "--aromatize", action="store_true", 
+             help="aromatize the molecule (which may change its structure) before canonization. Default to False.")
+        parser.add_argument("-s", "--stereo", action="store_true", 
+             help="assign stereo according to RDKit tags prior to canonization, which may help with dependent stereochemistry. Default to False.")
 
         args = parser.parse_args()
-        canonization = canonize(args.file)
+        canonization = canonize(args.file, args.aromatize, args.stereo)
 
         output_results = ["Original Index     Canonized Index     Atom Type   Stereochemical Tag"]
         output_results.append("-" * 80)

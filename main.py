@@ -12,11 +12,12 @@ E_TYPE=5
 r_TYPE=2
 s_TYPE=1
 AROMATIC=7
+UNKNOWN=8
 DOUBLE_BOND=Chem.rdchem.BondType.DOUBLE
 AROMATIC_BOND=Chem.rdchem.BondType.AROMATIC
 
 class atom:
-    def __init__(self,a=None,OriginalIndex=0,CopyFrom=None):
+    def __init__(self,a=None,OriginalIndex=0,CopyFrom=None,addRDKitStereo=False,minAtomRingSize=0):
         if CopyFrom==None:
             self.source=a
             self.degree=a.GetDegree()
@@ -24,8 +25,14 @@ class atom:
             self.attatchedHs=a.GetTotalNumHs(includeNeighbors=True)
             self.charge=a.GetNumRadicalElectrons()
             self.isotope=a.GetIsotope()
+            self.minAtomRingSize=minAtomRingSize
             self.stereochemistry=0
-            self.bonds=[bond.GetBondType() for bond in a.GetBonds()]
+            if addRDKitStereo:
+                self.rdkitStereoTag=int(a.GetChiralTag())
+            else:
+                self.rdkitStereoTag=0
+            self.bonds=a.GetBonds()
+            self.bondTypes=[bond.GetBondType() for bond in a.GetBonds()]
             self.doubleBondConnectAtom=None
             self.neighbors=()
             self.neighborIndexs=[]
@@ -40,30 +47,38 @@ class atom:
             self.neighborIndexs=[]
             self.originalIndex=CopyFrom.originalIndex
             self.currentIndex=CopyFrom.currentIndex
+            self.atomicNumber=CopyFrom.atomicNumber
+            self.bonds=CopyFrom.bonds
             self.isComplete=CopyFrom.isComplete
             self.stereochemistry=CopyFrom.stereochemistry
             self.doubleBondConnectAtom=CopyFrom.doubleBondConnectAtom
             self.idcode=CopyFrom.idcode
+            self.minAtomRingSize=CopyFrom.minAtomRingSize
 
-    def assignIdCode(self, loose_criterion=False):
+    def assignIdCode(self, loose_criterion=False, no_H=False):
         # new criterion:
-        #    ***                ***                  *       *       *        *
-        # atomicNum    largestNeighborElement   connection  n_Hs  isotope   charge
+        #    ***                ***                  *       *       *        *           *
+        # atomicNum    largestNeighborElement   connection  n_Hs  isotope   charge  rdkitStereoTag
         if loose_criterion:
             connection=self.degree
         else:
-            connection=self.degree+self.bonds.count(Chem.rdchem.BondType.DOUBLE) \
-            +self.bonds.count(Chem.rdchem.BondType.TRIPLE)*2 \
-            +self.bonds.count(Chem.rdchem.BondType.AROMATIC)*0.5
-        largestNeighborElement=max([item.atomicNumber for item in self.neighbors])
+            connection=self.degree+self.bondTypes.count(Chem.rdchem.BondType.DOUBLE) \
+            +self.bondTypes.count(Chem.rdchem.BondType.TRIPLE)*2 \
+            +self.bondTypes.count(Chem.rdchem.BondType.AROMATIC)*0.5
+        if len(self.neighbors)==0:
+            largestNeighborElement=0  # i.e. single ions or single atoms
+        else:
+            largestNeighborElement=max([item.atomicNumber for item in self.neighbors])
         idCode=0
-        idCode+=self.atomicNumber*1e7
-        idCode+=largestNeighborElement*1e4
-        idCode+=connection*1e3
-        idCode+=self.attatchedHs*100
-        idCode+=self.isotope*10
+        idCode+=self.atomicNumber*1e8
+        idCode+=largestNeighborElement*1e5
+        idCode+=connection*1e4
+        if not no_H:
+            idCode+=self.attatchedHs*1e3
+        idCode+=self.isotope*100
         if not loose_criterion:
-            idCode+=(self.charge+4)   # to avoid problem with negative charges
+            idCode+=(self.charge+4)*10   # to avoid problem with negative charges
+        idCode+=self.rdkitStereoTag
         self.idcode=int(idCode)
 
     def completeNeighborElements(self):
@@ -75,8 +90,9 @@ class atom:
         self.neighborIndexs.sort(reverse=True)
 
     def decideDoubleBondConnectedAtom(self):
-        if self.atomicNumber==6 and DOUBLE_BOND in self.bonds:
-            doubleBond=[bond for bond in self.source.GetBonds() if bond.GetBondType()==DOUBLE_BOND][0]
+        if self.bondTypes.count(DOUBLE_BOND) == 1:
+        # if self.atomicNumber==6 and DOUBLE_BOND in self.bondTypes:
+            doubleBond=[bond for bond in self.bonds if bond.GetBondType()==DOUBLE_BOND][0]
             doubleBondAtom=[item for item in self.neighbors \
                 if item.source.GetIdx() in (doubleBond.GetBeginAtomIdx(),doubleBond.GetEndAtomIdx())][0]
             self.doubleBondConnectAtom=doubleBondAtom
@@ -95,6 +111,8 @@ def CompleteNeighbor(worklist):
     for item in worklist:
         item.neighbors=tuple(p for p in worklist if (p.source.GetIdx() in [q.GetIdx() for q in item.source.GetNeighbors()]))
         item.updateNeighborIndexs()
+        neighborMapDict={neighbor.originalIndex:neighbor for neighbor in item.neighbors}
+        item.bondConnectedAtoms=[neighborMapDict[bond.GetOtherAtomIdx(item.originalIndex)] for bond in item.bonds]
     
 
 def AddItem(dictionary,key,value):
@@ -265,6 +283,37 @@ def OrdinaryTieBreaking(worklist):
 
 def DecideStereo(centralAtom):
     neighborAtoms=centralAtom.neighbors
+    if centralAtom.rdkitStereoTag==0:
+        stereoTag2D=UNKNOWN  # we do not know 2D chiral tag from molecular graph
+    else:
+        # this is for sure a chiral center. Get the chiral tag from rdkit
+        unsortedNeighborIndices=list(neighborAtom.currentIndex for neighborAtom in centralAtom.bondConnectedAtoms)
+        sortedNeighborIndices=sorted(unsortedNeighborIndices)
+        flip=False
+        if len(unsortedNeighborIndices)==4:
+            # all 4 connected atoms are explicit, then the last atom is the one behind the central atom
+            behindAtomIdx=unsortedNeighborIndices[-1]
+        else:
+            behindAtomIdx=[idx for idx in centralAtom.neighborIndexs if idx not in unsortedNeighborIndices]
+            if len(behindAtomIdx)==0:
+                behindAtomIdx=0
+            else:
+                assert len(behindAtomIdx)==1
+                behindAtomIdx=behindAtomIdx[0]
+        if behindAtomIdx>min(sortedNeighborIndices):
+            flip=not flip # flip if the atom behind the central atom is not the smallest index
+        a,b,c=sortedNeighborIndices[:3]
+        flip_configs=[(a,c,b),(b,a,c),(c,b,a)]
+        if unsortedNeighborIndices in flip_configs:
+            flip=not flip # decide whether the rdkit atom order needs to be flipped to comply with CIP
+        if centralAtom.rdkitStereoTag==2:
+            flip=not flip
+        if flip:
+            stereoTag2D=S_TYPE
+        else:
+            stereoTag2D=R_TYPE
+
+    # get chiral tag from 3D coordinates
     if len(neighborAtoms)==4: # connected 4 different groups
         a,b,c,d=[np.array(neighborAtom.coordinate) for neighborAtom in sorted(neighborAtoms,key=lambda x:x.currentIndex,reverse=True)]
         # assign a,b,c,d to atomic coordinates according to their current index
@@ -272,20 +321,33 @@ def DecideStereo(centralAtom):
         ab=b-a
         ac=c-a
         od=d-o
-        if np.linalg.det(np.vstack([ab,ac,od]))>0: # ab x ac · od > 0 
-            return R_TYPE
+        det=np.linalg.det(np.vstack([ab,ac,od]))
+        if np.abs(det)<1e-5:
+            stereoTag3D=UNKNOWN  # cannot infer chiral tag from 3D structure (i.e. it is actually only 2D)
+        elif det>0: # ab x ac · od > 0 
+            stereoTag3D=R_TYPE
         else:
-            return S_TYPE
+            stereoTag3D=S_TYPE
     elif len(neighborAtoms)==3:
         a,b,c=[np.array(neighborAtom.coordinate) for neighborAtom in sorted(neighborAtoms,key=lambda x:x.currentIndex,reverse=True)]
         o=np.array(centralAtom.coordinate)
         ab=b-a
         ac=c-a
         oa=a-o
-        if np.linalg.det(np.vstack([ab,ac,oa]))>0:
-            return S_TYPE
+        det=np.linalg.det(np.vstack([ab,ac,oa]))
+        if np.abs(det)<1e-5:
+            stereoTag3D=UNKNOWN  # cannot infer chiral tag from 3D structure (i.e. it is actually only 2D)
+        elif det>0:
+            stereoTag3D=S_TYPE
         else:
-            return R_TYPE
+            stereoTag3D=R_TYPE
+
+    # finally, check consensus of 3d and 2d chiral tag, and output
+    if stereoTag3D==UNKNOWN:
+        return stereoTag2D
+    elif stereoTag2D!=UNKNOWN and stereoTag3D!=stereoTag2D:
+        print("Warning! Stereochemical tag for atom {} calculated from 3D coordinates is different from that encoded in the molecular graph. Stereochemical tag calculated from 3D coordinates is used.".format(centralAtom.originalIndex))
+    return stereoTag3D
 
 def ConvertedStereoTag(stereoTag,firstTime):
     if firstTime:
@@ -321,63 +383,65 @@ def StereoAssigner(workset,firstTime=True):
         neighborCount=len(currentAtom.neighborIndexs)
         sameIndexAtoms=[item for item in workset if item.currentIndex==currentIndex] # find all atoms with same index
         updated=False
-        if currentAtom.stereochemistry==0: # check if the atom has not been assigned stereo tag, start assigning
-            if currentAtom.bonds.count(DOUBLE_BOND)==1 :  # one double bond, not assigned geometric tag
-                if neighborCount>1 and len(set(currentAtom.neighborIndexs))==neighborCount:
-                    doubleBondAtom=currentAtom.doubleBondConnectAtom
-                    if (doubleBondAtom):
-                        if len(doubleBondAtom.neighborIndexs)>1 and len(set(doubleBondAtom.neighborIndexs))==len(doubleBondAtom.neighborIndexs):
-                            # both sides of the double bond have different groups
-                            zCount=0
-                            doubleBondAtoms=[]
-                            for item in sameIndexAtoms:
-                                doubleBondAtom=item.doubleBondConnectAtom
-                                doubleBondAtoms.append(doubleBondAtom)
-                                geometricTag=DecideDoubleBondGeometric(item,doubleBondAtom)
-                                if geometricTag==Z_TYPE:
-                                    zCount+=1
-                                item.stereochemistry=geometricTag
-                                doubleBondAtom.stereochemistry=geometricTag
-                            updated=True
-                            for atom1,atom2 in zip(sameIndexAtoms,doubleBondAtoms):
-                                if atom1 in workset:
-                                    workset.remove(atom1)
-                                if atom2 in workset:
-                                    workset.remove(atom2)
-                                
-                                if atom1.stereochemistry==Z_TYPE:
-                                    # Z_TYPE atoms were updated their indices, while E_TYPE atoms keep their indices
-                                    atom1.currentIndex+=len(sameIndexAtoms)-zCount
-                                    atom2.currentIndex+=len(sameIndexAtoms)-zCount
-                                    updateNeighborList=list(atom1.neighbors)
-                                    updateNeighborList.extend(atom2.neighbors)
-                                    for neighbor in updateNeighborList:
-                                        neighbor.updateNeighborIndexs()
-                                        if (not neighbor.isComplete) or neighbor.stereochemistry==0:
-                                            workset.add(neighbor)
-                            if zCount:
-                                Refine(workset.copy())
-            elif currentAtom.bonds.count(DOUBLE_BOND)==0 and currentAtom.bonds.count(AROMATIC_BOND)==0:  # no double bond or aromatic bond                  
+        if  currentAtom.stereochemistry==0: # check if the atom (carbon) has not been assigned stereo tag, start assigning
+            if currentAtom.bondTypes.count(DOUBLE_BOND)==1: # one double bond (not in ring), not assigned geometric tag
+                if currentAtom.minAtomRingSize not in [3, 4, 5, 6, 7]:  # only when the double bond is in a ring in size 3~7 will the algorithm not reporting its Z/E
+                    if neighborCount>1 and len(set(currentAtom.neighborIndexs))==neighborCount:
+                        doubleBondAtom=currentAtom.doubleBondConnectAtom
+                        if (doubleBondAtom):
+                            if len(doubleBondAtom.neighborIndexs)>1 and len(set(doubleBondAtom.neighborIndexs))==len(doubleBondAtom.neighborIndexs):
+                                # both sides of the double bond have different groups
+                                zCount=0
+                                doubleBondAtoms=[]
+                                for item in sameIndexAtoms:
+                                    doubleBondAtom=item.doubleBondConnectAtom
+                                    doubleBondAtoms.append(doubleBondAtom)
+                                    geometricTag=DecideDoubleBondGeometric(item,doubleBondAtom)
+                                    if geometricTag==Z_TYPE:
+                                        zCount+=1
+                                    item.stereochemistry=geometricTag
+                                    doubleBondAtom.stereochemistry=geometricTag
+                                updated=True
+                                for atom1,atom2 in zip(sameIndexAtoms,doubleBondAtoms):
+                                    if atom1 in workset:
+                                        workset.remove(atom1)
+                                    if atom2 in workset:
+                                        workset.remove(atom2)
+                                    
+                                    if atom1.stereochemistry==Z_TYPE:
+                                        # Z_TYPE atoms were updated their indices, while E_TYPE atoms keep their indices
+                                        atom1.currentIndex+=len(sameIndexAtoms)-zCount
+                                        atom2.currentIndex+=len(sameIndexAtoms)-zCount
+                                        updateNeighborList=list(atom1.neighbors)
+                                        updateNeighborList.extend(atom2.neighbors)
+                                        for neighbor in updateNeighborList:
+                                            neighbor.updateNeighborIndexs()
+                                            if (not neighbor.isComplete) or neighbor.stereochemistry==0:
+                                                workset.add(neighbor)
+                                if zCount:
+                                    Refine(workset.copy())
+            elif currentAtom.bondTypes.count(DOUBLE_BOND)==0 and currentAtom.bondTypes.count(AROMATIC_BOND)==0:  # no double bond or aromatic bond                  
                 rCount=0        
                 if neighborCount>2 and len(set(currentAtom.neighborIndexs))==neighborCount:
                 # there is no same thing in current atom's neighbor list (implicit hydrogen included)                 
-                    for item in sameIndexAtoms:
-                        stereoTag=DecideStereo(item)
-                        if stereoTag==R_TYPE:
-                            rCount+=1
-                        item.stereochemistry=ConvertedStereoTag(stereoTag,firstTime)
-                    updated=True
-                    for item in sameIndexAtoms:
-                        workset.remove(item)
-                        if item.stereochemistry in (R_TYPE,r_TYPE):
-                            item.currentIndex+=len(sameIndexAtoms)-rCount  # which is sCount
-                        for neighbor in item.neighbors:
-                            neighbor.updateNeighborIndexs()
-                            if not neighbor.isComplete or neighbor.stereochemistry==0:
-                                if not firstTime:
-                                    workset.add(neighbor)
-                    if rCount and not firstTime:
-                        Refine(workset.copy())
+                    if currentAtom.atomicNumber==6 or (currentAtom.atomicNumber==7 and neighborCount==4): # carbon or tetrahedral nitrogen
+                        for item in sameIndexAtoms:
+                            stereoTag=DecideStereo(item)
+                            if stereoTag==R_TYPE:
+                                rCount+=1
+                            item.stereochemistry=ConvertedStereoTag(stereoTag,firstTime)
+                        updated=True
+                        for item in sameIndexAtoms:
+                            workset.remove(item)
+                            if item.stereochemistry in (R_TYPE,r_TYPE):
+                                item.currentIndex+=len(sameIndexAtoms)-rCount  # which is sCount
+                            for neighbor in item.neighbors:
+                                neighbor.updateNeighborIndexs()
+                                if not neighbor.isComplete or neighbor.stereochemistry==0:
+                                    if not firstTime:
+                                        workset.add(neighbor)
+                        if rCount and not firstTime:
+                            Refine(workset.copy())
         if not updated:
             for item in sameIndexAtoms:
                 workset.remove(item)
@@ -385,13 +449,15 @@ def StereoAssigner(workset,firstTime=True):
                 
             
 
-def Canonizer(molecule,no_isomerism=False):
-    worklist=[atom(a,index) for index,a in enumerate(molecule.GetAtoms())]
+def Canonizer(molecule,no_isomerism=False,no_H=False,stereo=False):
+    ringInfo=molecule.GetRingInfo()
+    worklist=[atom(a,index,addRDKitStereo=stereo,minAtomRingSize=ringInfo.MinAtomRingSize(index))
+         for index,a in enumerate(molecule.GetAtoms())]
     CompleteNeighbor(worklist)
     for item in worklist:
         item.completeNeighborElements()
     for item in worklist:
-        item.assignIdCode()
+        item.assignIdCode(no_H=True)
     # Initialize values
     worklist.sort(key=lambda i:i.idcode)
     workset=set(worklist)
@@ -424,14 +490,15 @@ def Canonizer(molecule,no_isomerism=False):
         StereoAssigner(set(worklist),False)
     return worklist
 
-def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolecule=None,ma=None,ea=None,no_alignment=False,qcp=False):
+def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolecule=None,
+        ma=None,ea=None,no_Hs=False,no_alignment=False,qcp=False,stereo=False):
     if not unbrokenMolecule:
         global molConf
         if mol==None:
             import sys
             sys.exit()
         molConf=mol.GetConformer()
-        unbrokenMolecule=Canonizer(mol,no_isomerism)
+        unbrokenMolecule=Canonizer(mol,no_isomerism,no_Hs,stereo=stereo)
     if serial:
         return BranchingTieBreaking(mol,unbrokenMolecule,ma,ea,no_alignment,qcp)
     else:

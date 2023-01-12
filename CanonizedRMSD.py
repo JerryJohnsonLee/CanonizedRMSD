@@ -81,8 +81,8 @@ def Calculate(molA, molB, appending, saveMediates=False, no_isomerism=False, no_
     contentA,_=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
     contentB,unbrokenB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
     canonizedA=formatting.SequenceExchanger(molA,appending[2],contentA)
-    contentRA,_=main.CanonizedSequenceRetriever(molRA,False,no_isomerism)
-    contentRB,_=main.CanonizedSequenceRetriever(molRB,False,no_isomerism)
+    contentRA,_=main.CanonizedSequenceRetriever(molRA,False,no_isomerism,no_Hs=True)
+    contentRB,_=main.CanonizedSequenceRetriever(molRB,False,no_isomerism,no_Hs=True)
     if not main.JudgeIdentity(contentRA,contentRB):
         if saveMediates:
             formatting.SequenceExchanger(molB,appending[3],contentB)
@@ -90,7 +90,7 @@ def Calculate(molA, molB, appending, saveMediates=False, no_isomerism=False, no_
     print("Based on non-hydrogen molecule graph, the two input molecules are identical!")
     (ma,ea)=formatting.FormMat(canonizedA)
     if tiebreaking:
-        minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,no_alignment,qcp) 
+        minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,False,no_alignment,qcp) 
     else:
         contentMinB=contentB
         canonizedMinB=formatting.SequenceExchanger(molB,appending[3],contentMinB)
