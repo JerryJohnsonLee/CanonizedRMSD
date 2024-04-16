@@ -228,13 +228,17 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
         canonizedB=formatting.SequenceExchanger(molB,0,contentB)
         (mb,eb)=formatting.FormMat(canonizedB)
         if formatting.CheckElements(ea,eb):
+            # only calculate rmsd based on completed atoms
+            completeFilter=np.array([item['item'].isComplete for item in sorted(contentB,key=lambda x:x['canonized'])])
+            maCalc=ma[completeFilter]
+            mbCalc=mb[completeFilter]
             if (no_alignment):
-                rmsd=np.linalg.norm(ma-mb)/np.sqrt(ma.shape[0])
+                rmsd=np.linalg.norm(maCalc-mbCalc)/np.sqrt(maCalc.shape[0])
             elif (qcp==False):
-                rmsd=formatting.kabsch_rmsd(ma,mb,no_alignment=no_alignment)
+                rmsd=formatting.kabsch_rmsd(maCalc,mbCalc,no_alignment=no_alignment)
             else:
-                MA=ma.A
-                MB=mb.A
+                MA=maCalc.A
+                MB=mbCalc.A
                 rmsd=formatting.qcp_rmsd(MA,MB)
         else:
             sys.exit()
@@ -253,7 +257,7 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
     else:
         return BranchingTieBreaking(molB,List,ma,ea,no_alignment,qcp)
 
-def OrdinaryTieBreaking(worklist):
+def OrdinaryTieBreaking(worklist,distMat):
     unbrokenIndexs=[]
     for item in worklist:
         if not item.isComplete:
@@ -266,20 +270,31 @@ def OrdinaryTieBreaking(worklist):
         # Select the index with least occuring number while being as large as possible
         selectedItem=sorted(indexNumbers,key=lambda p:(p['number'],-p['index']))[0]
         selectedIndex=selectedItem['index']
-        # selectedNumber=selectedItem['number']
+
+        # choose one item to assign complete tag, and an arbitrary one with the same index 
+        # that is closest to this item to assign +1 index. For all the rest ones with the same index,
+        # assign +2 index. Then do refinement
+        itemsWithChosenIndex=[item for item in worklist if item.currentIndex==selectedIndex]
+        itemsWithChosenIndex[0].isComplete=True
+        distanceToChosen=[distMat[itemsWithChosenIndex[0].originalIndex][item.originalIndex] for item in itemsWithChosenIndex[1:]]
+        brokenIndex=np.argmin(distanceToChosen)+1
+        for idx in range(1, len(itemsWithChosenIndex)):
+            if idx==brokenIndex:
+                # deliberate tiebreaking with the closest neighbor to the selected item
+                itemsWithChosenIndex[idx].currentIndex+=1
+                itemsWithChosenIndex[idx].isComplete=True
+            else:
+                # for the rest, increase their index by 2
+                itemsWithChosenIndex[idx].currentIndex+=2
+
         newSet=set()
-        n=0
         for item in worklist:
-            if item.currentIndex==selectedIndex:
-                item.currentIndex+=n
-                item.isComplete=True
-                n+=1
-            elif item.currentIndex in unbrokenIndexs:
-                newSet.add(item)
-        for item in newSet:
-            item.updateNeighborIndexs()
+            if not item.isComplete:
+                item.updateNeighborIndexs()
+            newSet.add(item)
+        
         Refine(newSet)
-        OrdinaryTieBreaking(worklist)
+        OrdinaryTieBreaking(worklist,distMat)
 
 def DecideStereo(centralAtom):
     neighborAtoms=centralAtom.neighbors
@@ -499,11 +514,13 @@ def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolec
             sys.exit()
         molConf=mol.GetConformer()
         unbrokenMolecule=Canonizer(mol,no_isomerism,no_Hs,stereo=stereo)
+    # distance matrix to be used for tiebreaking
+    distMat=Chem.GetDistanceMatrix(mol)
     if serial:
         return BranchingTieBreaking(mol,unbrokenMolecule,ma,ea,no_alignment,qcp)
     else:
         collection=deepcopy(unbrokenMolecule)
-        OrdinaryTieBreaking(collection)
+        OrdinaryTieBreaking(collection,distMat)
         dictionary=[{"original":item.originalIndex,"canonized":item.currentIndex,"item":item} for item in collection]
         return dictionary,unbrokenMolecule
 
