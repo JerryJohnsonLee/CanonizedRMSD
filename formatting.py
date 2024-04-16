@@ -356,40 +356,43 @@ def SequenceExchanger(f1,f2,dictionary):
     s_file.close()
     return string
 
-def ReadFromMol(file,appending,removeH):
+def ReadFromMol(file,appending):
     convertedMolBlock=ConvertFromGaussianToRdkit(file,appending)
     molA=Chem.MolFromMolBlock(convertedMolBlock,sanitize=False)
     A=GetNonHydrogenIndices(molA)
     return molA,A
 
-def ReadFromMol2(file,removeH):
+def ReadFromMol2(file):
     molA=Chem.MolFromMol2File(file,sanitize=False)
     A=GetNonHydrogenIndices(molA)
     return molA,A
 
-def ReadFromMol3(file,appending,removeH):
+def ReadFromMol3(file):
     molA = Chem.MolFromPDBFile(file,sanitize=False)
     A=GetNonHydrogenIndices(molA)
     return molA,A
 
 def Read(file,appending,fileState,removeH,aromatize=False,assignRDKitStereo=False):
     if fileState==1:
-        mol,M=ReadFromMol(file,appending,removeH)
+        mol,M=ReadFromMol(file,appending)
     elif fileState==2:
-        mol,M=ReadFromMol2(file,removeH)
+        mol,M=ReadFromMol2(file)
     elif fileState==3:
-        mol,M=ReadFromMol3(file,appending,removeH)
+        mol,M=ReadFromMol3(file)
     elif fileState==0:
         try:
-            mol,M=ReadFromMol(file,appending,removeH)
+            mol,M=ReadFromMol(file,appending)
         except:
             try:
-                mol,M=ReadFromMol2(file,removeH)
+                mol,M=ReadFromMol2(file)
             except:
                 print("Unsupported file: %s"%file)
                 import sys
                 sys.exit()
     
+    # remove Hs when required
+    if removeH:
+        mol=Chem.RemoveHs(mol)
     # partial sanitization to make sure necessary molecular properties are calculated
     mol.UpdatePropertyCache(strict=False)
     sanitizeOpts=Chem.SanitizeFlags.SANITIZE_FINDRADICALS| \
