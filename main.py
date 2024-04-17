@@ -174,26 +174,17 @@ def Refine(workset):
                             if not item.isComplete:
                                 addItemWithCurrentIndexMap(item,workset,currentIndexMap)
 
-def SelectBestIndexForTieBreaking(unbrokenIndexs,unbrokenIndexToOriginal,topDistMat):
+def SelectBestIndexForTieBreaking(unbrokenIndexs):
     indexNumbers=[]
     for index in set(unbrokenIndexs):
-        # find the minimum topological distance between same partition
-        originals=unbrokenIndexToOriginal[index]
-        if len(originals) == 1:
-            continue # no need to break tie for singletons
-        topDists=set(topDistMat[originals,:][:,originals].flatten())
-        # 0 is definitely one of the topDists elements. So remove it
-        topDists.remove(0)
-        minTopDist=np.min(list(topDists))
         indexNumbers.append({'index':index,
-                                'number':unbrokenIndexs.count(index),
-                                'minTopDist':minTopDist})
+                                'number':unbrokenIndexs.count(index)})
     # Select the index with smallest minimum topological distance, most occuring number while being as large as possible
-    selectedItem=sorted(indexNumbers,key=lambda p:(p['minTopDist'],-p['number'],-p['index']))[0]
+    selectedItem=sorted(indexNumbers,key=lambda p:(-p['number'],-p['index']))[0]
     selectedIndex=selectedItem['index']
     return selectedIndex
 
-def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp,topDistMat):
+def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
     unbrokenIndexs=[]
     unbrokenIndexToOriginal={}
     for item in templateWorklist:
@@ -215,7 +206,7 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp,topDistMat
                 MB=mb.A
                 rmsd=formatting.qcp_rmsd(MA,MB)
         return rmsd, canonizedB, contentB
-    selectedIndex=SelectBestIndexForTieBreaking(unbrokenIndexs,unbrokenIndexToOriginal,topDistMat)
+    selectedIndex=SelectBestIndexForTieBreaking(unbrokenIndexs)
     selectedNumber=len(unbrokenIndexToOriginal[selectedIndex])
     itemsWithChosenIndex=[item for item in templateWorklist if item.currentIndex==selectedIndex]
 
@@ -224,32 +215,15 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp,topDistMat
     canonizedMinB=None
     contentMinB=None
     List=None
-    ij_combinations=[]
     for i in range(selectedNumber):
-        # tempList=deepcopy(templateWorklist)
-        # 
-        # itemsWithChosenIndex[i].isComplete=True
-        distanceToChosen=[topDistMat[itemsWithChosenIndex[i].originalIndex][itemsWithChosenIndex[j].originalIndex] 
-                          for j in range(selectedNumber) if j!=i]
-        minimumDistance=np.min(distanceToChosen)
-        # enumerate all possibilities of assigning the next index to minimum distance atom to the chosen one
-        for j in range(selectedNumber):
-            if j!=i and topDistMat[itemsWithChosenIndex[i].originalIndex][itemsWithChosenIndex[j].originalIndex]==minimumDistance:
-                ij_combinations.append((i,j))
-    # now try these combinations for branching tiebreaking
-    for i,j in ij_combinations:
         newList=deepcopy(templateWorklist)
         itemsWithChosenIndex=[item for item in newList if item.currentIndex==selectedIndex]
         for idx in range(selectedNumber):
             if idx==i:
                 itemsWithChosenIndex[idx].isComplete=True
-            elif idx==j:
-                # deliberate tiebreaking with the closest neighbor to the selected item
-                itemsWithChosenIndex[idx].currentIndex+=1
-                itemsWithChosenIndex[idx].isComplete=True
             else:
-                # for the rest, increase their index by 2
-                itemsWithChosenIndex[idx].currentIndex+=2
+                # for the rest, increase their index by 1
+                itemsWithChosenIndex[idx].currentIndex+=1
         
         newSet=set()
         for item in newList:
@@ -289,33 +263,22 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp,topDistMat
     if complete:
         return minRmsd,canonizedMinB,contentMinB
     else:
-        return BranchingTieBreaking(molB,List,ma,ea,no_alignment,qcp,topDistMat)
+        return BranchingTieBreaking(molB,List,ma,ea,no_alignment,qcp)
 
-def OrdinaryTieBreaking(worklist,topDistMat):
+def OrdinaryTieBreaking(worklist):
     unbrokenIndexs=[]
-    unbrokenIndexToOriginal={}
     for item in worklist:
         if not item.isComplete:
             unbrokenIndexs.append(item.currentIndex)
-            AddItem(unbrokenIndexToOriginal,item.currentIndex,item.originalIndex)
     if len(unbrokenIndexs)!=0:
-        selectedIndex=SelectBestIndexForTieBreaking(unbrokenIndexs,unbrokenIndexToOriginal,topDistMat)
+        selectedIndex=SelectBestIndexForTieBreaking(unbrokenIndexs)
 
-        # choose one item to assign complete tag, and an arbitrary one with the same index 
-        # that is closest to this item to assign +1 index. For all the rest ones with the same index,
-        # assign +2 index. Then do refinement
+        # choose one item to assign complete tag. For all the rest ones with the same index,
+        # assign +1 index. Then do refinement
         itemsWithChosenIndex=[item for item in worklist if item.currentIndex==selectedIndex]
         itemsWithChosenIndex[0].isComplete=True
-        distanceToChosen=[topDistMat[itemsWithChosenIndex[0].originalIndex][item.originalIndex] for item in itemsWithChosenIndex[1:]]
-        brokenIndex=np.argmin(distanceToChosen)+1
         for idx in range(1, len(itemsWithChosenIndex)):
-            if idx==brokenIndex:
-                # deliberate tiebreaking with the closest neighbor to the selected item
-                itemsWithChosenIndex[idx].currentIndex+=1
-                itemsWithChosenIndex[idx].isComplete=True
-            else:
-                # for the rest, increase their index by 2
-                itemsWithChosenIndex[idx].currentIndex+=2
+            itemsWithChosenIndex[idx].currentIndex+=1
 
         newSet=set()
         for item in worklist:
@@ -324,7 +287,7 @@ def OrdinaryTieBreaking(worklist,topDistMat):
             newSet.add(item)
         
         Refine(newSet)
-        OrdinaryTieBreaking(worklist,topDistMat)
+        OrdinaryTieBreaking(worklist)
 
 def DecideStereo(centralAtom):
     neighborAtoms=centralAtom.neighbors
@@ -510,8 +473,14 @@ def StereoAssigner(workset,firstTime=True):
             for item in sameIndexAtoms:
                 workset.remove(item)
 
-                
-            
+def RefineWorklist(worklist):
+    workset=set(worklist)
+    for item in worklist:
+        if item.isComplete:
+            workset.remove(item)
+        else:
+            item.updateNeighborIndexs()          
+    Refine(workset)    
 
 def Canonizer(molecule,no_isomerism=False,no_H=False,stereo=False):
     ringInfo=molecule.GetRingInfo()
@@ -546,14 +515,9 @@ def Canonizer(molecule,no_isomerism=False,no_H=False,stereo=False):
             item.decideDoubleBondConnectedAtom()
         
         StereoAssigner(set(worklist))
-        workset=set(worklist)
-        for item in worklist:
-            if item.isComplete:
-                workset.remove(item)
-            else:
-                item.updateNeighborIndexs()
-        Refine(workset)
+        RefineWorklist(worklist)
         StereoAssigner(set(worklist),False)
+        RefineWorklist(worklist)
     return worklist
 
 def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolecule=None,
@@ -568,10 +532,10 @@ def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolec
     # topological distance matrix to be used for tiebreaking
     topDistMat=Chem.GetDistanceMatrix(mol)
     if serial:
-        return BranchingTieBreaking(mol,unbrokenMolecule,ma,ea,no_alignment,qcp,topDistMat)
+        return BranchingTieBreaking(mol,unbrokenMolecule,ma,ea,no_alignment,qcp)
     else:
         collection=deepcopy(unbrokenMolecule)
-        OrdinaryTieBreaking(collection,topDistMat)
+        OrdinaryTieBreaking(collection)
         dictionary=[{"original":item.originalIndex,"canonized":item.currentIndex,"item":item} for item in collection]
         return dictionary,unbrokenMolecule
 
