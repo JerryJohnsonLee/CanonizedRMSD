@@ -175,7 +175,7 @@ def Refine(workset):
                                 addItemWithCurrentIndexMap(item,workset,currentIndexMap)
 
 
-def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
+def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp,distMat):
     unbrokenIndexs=[]
     for item in templateWorklist:
         if not item.isComplete:
@@ -203,27 +203,46 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
     selectedItem=sorted(indexNumbers,key=lambda p:(p['number'],-p['index']))[0]
     selectedIndex=selectedItem['index']
     selectedNumber=selectedItem['number']
-    import math
-    import itertools
-    permutations=list(itertools.permutations(range(selectedNumber)))
+    itemsWithChosenIndex=[item for item in templateWorklist if item.currentIndex==selectedIndex]
+
+    # enumerate all possibilities of selecting the first atom to assign complete tag
     minRmsd=-1
     canonizedMinB=None
     contentMinB=None
     List=None
-    for i in range(math.factorial(selectedNumber)):
+    ij_combinations=[]
+    for i in range(selectedNumber):
+        # tempList=deepcopy(templateWorklist)
+        # 
+        # itemsWithChosenIndex[i].isComplete=True
+        distanceToChosen=[distMat[itemsWithChosenIndex[i].originalIndex][itemsWithChosenIndex[j].originalIndex] 
+                          for j in range(selectedNumber) if j!=i]
+        minimumDistance=np.min(distanceToChosen)
+        # enumerate all possibilities of assigning the next index to minimum distance atom to the chosen one
+        for j in range(selectedNumber):
+            if j!=i and distMat[itemsWithChosenIndex[i].originalIndex][itemsWithChosenIndex[j].originalIndex]==minimumDistance:
+                ij_combinations.append((i,j))
+    # now try these combinations for branching tiebreaking
+    for i,j in ij_combinations:
         newList=deepcopy(templateWorklist)
+        itemsWithChosenIndex=[item for item in newList if item.currentIndex==selectedIndex]
+        for idx in range(selectedNumber):
+            if idx==i:
+                itemsWithChosenIndex[idx].isComplete=True
+            elif idx==j:
+                # deliberate tiebreaking with the closest neighbor to the selected item
+                itemsWithChosenIndex[idx].currentIndex+=1
+                itemsWithChosenIndex[idx].isComplete=True
+            else:
+                # for the rest, increase their index by 2
+                itemsWithChosenIndex[idx].currentIndex+=2
+        
         newSet=set()
-        indiceDistribution=permutations[i]
-        n=0
-        for j in newList:
-            if j.currentIndex==selectedIndex:
-                j.currentIndex+=indiceDistribution[n]
-                j.isComplete=True
-                n+=1
-            elif j.currentIndex in unbrokenIndexs:
-                newSet.add(j)
-        for j in newSet:
-            j.updateNeighborIndexs()
+        for item in newList:
+            if not item.isComplete:
+                item.updateNeighborIndexs()
+            newSet.add(item)
+        
         Refine(newSet)
         contentB=[{"original":k.originalIndex,"canonized":k.currentIndex,"item":k} for k in newList]
         canonizedB=formatting.SequenceExchanger(molB,0,contentB)
@@ -243,6 +262,7 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
                 rmsd=formatting.qcp_rmsd(MA,MB)
         else:
             sys.exit()
+
         if minRmsd==-1 or minRmsd>rmsd:
             minRmsd=rmsd
             canonizedMinB=canonizedB
@@ -256,7 +276,7 @@ def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
     if complete:
         return minRmsd,canonizedMinB,contentMinB
     else:
-        return BranchingTieBreaking(molB,List,ma,ea,no_alignment,qcp)
+        return BranchingTieBreaking(molB,List,ma,ea,no_alignment,qcp,distMat)
 
 def OrdinaryTieBreaking(worklist,distMat):
     unbrokenIndexs=[]
@@ -537,7 +557,7 @@ def CanonizedSequenceRetriever(mol,serial=False,no_isomerism=False,unbrokenMolec
     # distance matrix to be used for tiebreaking
     distMat=Chem.GetDistanceMatrix(mol)
     if serial:
-        return BranchingTieBreaking(mol,unbrokenMolecule,ma,ea,no_alignment,qcp)
+        return BranchingTieBreaking(mol,unbrokenMolecule,ma,ea,no_alignment,qcp,distMat)
     else:
         collection=deepcopy(unbrokenMolecule)
         OrdinaryTieBreaking(collection,distMat)
