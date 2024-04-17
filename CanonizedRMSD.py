@@ -77,7 +77,7 @@ def Main(source1,source2,saveMediates=False,outputInterrelationship=False,no_iso
         OutputInterrelationship(GetInterrelationship(contentA,contentMinB),A,B,removeHs)
 
 
-def Calculate(molA, molB, appending, saveMediates=False, no_isomerism=False, no_alignment=False, qcp=False, tiebreaking=True, quiet=False):
+def Calculate(molA, molB, appending=[0,0,0,0], saveMediates=False, no_isomerism=False, no_alignment=False, qcp=False, tiebreaking=True, quiet=False):
     molRA=Chem.RemoveHs(molA)
     molRB=Chem.RemoveHs(molB)
     #start_time=clock()

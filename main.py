@@ -179,6 +179,8 @@ def SelectBestIndexForTieBreaking(unbrokenIndexs,unbrokenIndexToOriginal,topDist
     for index in set(unbrokenIndexs):
         # find the minimum topological distance between same partition
         originals=unbrokenIndexToOriginal[index]
+        if len(originals) == 1:
+            continue # no need to break tie for singletons
         topDists=set(topDistMat[originals,:][:,originals].flatten())
         # 0 is definitely one of the topDists elements. So remove it
         topDists.remove(0)
