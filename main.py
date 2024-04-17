@@ -134,6 +134,7 @@ def Refine(workset):
     dictionaryForIndexs={}
     for item in workset:
         AddItem(dictionaryForIndexs,item.currentIndex,item)
+    currentIndexMap=constructCurrentIndexMap(workset)
     while len(workset)>0:        
         currentIndex=SelectBestIndex(workset)
         currentPartition=[items for items in dictionaryForIndexs[currentIndex] if items in workset]
@@ -171,7 +172,7 @@ def Refine(workset):
                     if dictionaryForIndexs.__contains__(neighbor.currentIndex):
                         for item in dictionaryForIndexs[neighbor.currentIndex]:
                             if not item.isComplete:
-                                workset.add(item) 
+                                addItemWithCurrentIndexMap(item,workset,currentIndexMap)
 
 
 def BranchingTieBreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
@@ -388,7 +389,26 @@ def DecideDoubleBondGeometric(atom1,atom2):
         return E_TYPE
 
 
+def constructCurrentIndexMap(workset):
+    indexMap={}
+    for item in workset:
+        if item.currentIndex in indexMap:
+            indexMap[item.currentIndex].append(item)
+        else:
+            indexMap[item.currentIndex]=[item]
+    return indexMap
+
+def addItemWithCurrentIndexMap(item,workset,currentIndexMap):
+    # make sure once an item is added back to workset, all items with the same current index are also added
+    if item.currentIndex in currentIndexMap:
+        itemsWithSameIndexAsNeighbor=currentIndexMap[item.currentIndex]
+    else:
+        itemsWithSameIndexAsNeighbor=[item]
+    for content in itemsWithSameIndexAsNeighbor:
+        workset.add(content)
+
 def StereoAssigner(workset,firstTime=True):
+    currentIndexMap=constructCurrentIndexMap(workset)
     while len(workset):
         currentIndex=SelectBestIndex(workset)
         for item in workset:
@@ -432,7 +452,7 @@ def StereoAssigner(workset,firstTime=True):
                                         for neighbor in updateNeighborList:
                                             neighbor.updateNeighborIndexs()
                                             if (not neighbor.isComplete) or neighbor.stereochemistry==0:
-                                                workset.add(neighbor)
+                                                addItemWithCurrentIndexMap(neighbor,workset,currentIndexMap)
                                 if zCount:
                                     Refine(workset.copy())
             elif currentAtom.bondTypes.count(DOUBLE_BOND)==0 and currentAtom.bondTypes.count(AROMATIC_BOND)==0:  # no double bond or aromatic bond                  
@@ -454,7 +474,7 @@ def StereoAssigner(workset,firstTime=True):
                                 neighbor.updateNeighborIndexs()
                                 if not neighbor.isComplete or neighbor.stereochemistry==0:
                                     if not firstTime:
-                                        workset.add(neighbor)
+                                        addItemWithCurrentIndexMap(neighbor,workset,currentIndexMap)
                         if rCount and not firstTime:
                             Refine(workset.copy())
         if not updated:
