@@ -7,12 +7,12 @@ import numpy as np
 
 try:
     from rdkit import Chem
-    import formatting
-    import main
 except:
     print("RDKit module not found in your Python! Please make sure RDKit is correctly installed.")
     print("Please go to http://www.rdkit.org/docs/Install.html for more details about installation.")
     sys.exit()
+import formatting
+import main
 
 
 
@@ -34,11 +34,14 @@ def GetInterrelationship(canonizedCollection1,canonizedCollection2):
         result.append((item["original"],index2))
     return result
 
-def OutputInterrelationship(collection,sequenceA,sequenceB):
+def OutputInterrelationship(collection,sequenceA,sequenceB,removeHs):
     print("="*40)
     print("Index in File 1 || Index in File 2")
-    for item in collection:
-        print(str(sequenceA.index(item[0]+1)+1).center(16)+"  "+str(sequenceB.index(item[1]+1)+1).center(16))
+    for item in sorted(collection):
+        if removeHs:
+            print(str(sequenceA[item[0]]+1).center(16)+"  "+str(sequenceB[item[1]]+1).center(16))
+        else:
+            print(str(item[0]+1).center(16)+"  "+str(item[1]+1).center(16))
 
 def Main(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False,no_alignment=False,qcp=False,removeHs=False,tiebreaking=True):  
     if(saveMediates):
@@ -71,26 +74,27 @@ def Main(source1,source2,saveMediates=False,outputInterrelationship=False,no_iso
         +"\nRotation Matrix:\n"+str(rotation)+"\nTransformed Coordinates for molecule 2:\n"+str(coords)
             f.write(s)
     if outputInterrelationship:
-        OutputInterrelationship(GetInterrelationship(contentA,contentMinB),A,B)
+        OutputInterrelationship(GetInterrelationship(contentA,contentMinB),A,B,removeHs)
 
 
-def Calculate(molA, molB, appending, saveMediates=False, no_isomerism=False, no_alignment=False, qcp=False, tiebreaking=True):
+def Calculate(molA, molB, appending=[0,0,0,0], saveMediates=False, no_isomerism=False, no_alignment=False, qcp=False, tiebreaking=True, quiet=False):
     molRA=Chem.RemoveHs(molA)
     molRB=Chem.RemoveHs(molB)
     #start_time=clock()
     contentA,_=main.CanonizedSequenceRetriever(molA,False,no_isomerism)
     contentB,unbrokenB=main.CanonizedSequenceRetriever(molB,False,no_isomerism)
     canonizedA=formatting.SequenceExchanger(molA,appending[2],contentA)
-    contentRA,_=main.CanonizedSequenceRetriever(molRA,False,no_isomerism)
-    contentRB,_=main.CanonizedSequenceRetriever(molRB,False,no_isomerism)
+    contentRA,_=main.CanonizedSequenceRetriever(molRA,False,no_isomerism,no_Hs=True)
+    contentRB,_=main.CanonizedSequenceRetriever(molRB,False,no_isomerism,no_Hs=True)
     if not main.JudgeIdentity(contentRA,contentRB):
         if saveMediates:
             formatting.SequenceExchanger(molB,appending[3],contentB)
         return -1
-    print("Based on non-hydrogen molecule graph, the two input molecules are identical!")
+    if not quiet:
+        print("Based on non-hydrogen molecule graph, the two input molecules are identical!")
     (ma,ea)=formatting.FormMat(canonizedA)
     if tiebreaking:
-        minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,no_alignment,qcp) 
+        minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,False,no_alignment,qcp) 
     else:
         contentMinB=contentB
         canonizedMinB=formatting.SequenceExchanger(molB,appending[3],contentMinB)

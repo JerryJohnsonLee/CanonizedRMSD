@@ -239,6 +239,14 @@ def GetIndexList(file,removeHs):
     del sequence[-1]
     return sequence
 
+def GetNonHydrogenIndices(molecule):
+    # get the non-H atom indices and form a list
+    sequence=[]
+    for atom in molecule.GetAtoms():
+        if atom.GetSymbol()!="H":
+            sequence.append(atom.GetIdx())
+    return sequence
+
 def CheckElements(e1,e2):
     n=len(e1)
     if (len(e2)!=n):
@@ -348,56 +356,64 @@ def SequenceExchanger(f1,f2,dictionary):
     s_file.close()
     return string
 
-def ReadFromMol(file,appending,removeH):
-    oldA,A=removeHs(ConvertFromGaussianToRdkit(file,appending),removeH)
-    molA=Chem.MolFromMolBlock(oldA,removeHs=removeH, sanitize=False)
+def ReadFromMol(file,appending):
+    convertedMolBlock=ConvertFromGaussianToRdkit(file,appending)
+    molA=Chem.MolFromMolBlock(convertedMolBlock,sanitize=False)
+    A=GetNonHydrogenIndices(molA)
     return molA,A
 
-def ReadFromMol2(file,removeH):
-    molA=Chem.MolFromMol2File(file,removeHs=removeH, sanitize=False)
-    A=GetIndexList(file,removeH)
+def ReadFromMol2(file):
+    molA=Chem.MolFromMol2File(file,sanitize=False)
+    A=GetNonHydrogenIndices(molA)
     return molA,A
 
-def ReadFromMol3(file,appending,removeH):
-    molA = Chem.MolFromPDBFile(file,removeHs=removeH, sanitize=False)
-    M='PdbToMol.mol'
-    Chem.MolToMolFile(molA,M)
-    oldA,A=removeHs(ConvertFromGaussianToRdkit(M,appending),removeH)
-    os.remove(M)
+def ReadFromMol3(file):
+    molA = Chem.MolFromPDBFile(file,sanitize=False)
+    A=GetNonHydrogenIndices(molA)
     return molA,A
 
-def Read(file,appending,fileState,removeH):
+def Read(file,appending,fileState,removeH,aromatize=False,assignRDKitStereo=False):
     if fileState==1:
-        mol,M=ReadFromMol(file,appending,removeH)
+        mol,M=ReadFromMol(file,appending)
     elif fileState==2:
-        mol,M=ReadFromMol2(file,removeH)
+        mol,M=ReadFromMol2(file)
     elif fileState==3:
-        mol,M=ReadFromMol3(file,appending,removeH)
+        mol,M=ReadFromMol3(file)
     elif fileState==0:
         try:
-            mol,M=ReadFromMol(file,appending,removeH)
+            mol,M=ReadFromMol(file,appending)
         except:
             try:
-                mol,M=ReadFromMol2(file,removeH)
+                mol,M=ReadFromMol2(file)
             except:
                 print("Unsupported file: %s"%file)
                 import sys
                 sys.exit()
     
+    # remove Hs when required
+    if removeH:
+        mol=Chem.RemoveHs(mol)
     # partial sanitization to make sure necessary molecular properties are calculated
     mol.UpdatePropertyCache(strict=False)
-    sanitization_result = Chem.SanitizeMol(mol,sanitizeOps=Chem.SanitizeFlags.SANITIZE_FINDRADICALS| \
-                                     Chem.SanitizeFlags.SANITIZE_KEKULIZE| \
-                                     Chem.SanitizeFlags.SANITIZE_SETAROMATICITY| \
-                                     Chem.SanitizeFlags.SANITIZE_SETCONJUGATION| \
-                                     Chem.SanitizeFlags.SANITIZE_SETHYBRIDIZATION| \
-                                     Chem.SanitizeFlags.SANITIZE_SYMMRINGS| \
-                                     Chem.SanitizeFlags.SANITIZE_ADJUSTHS,
+    sanitizeOpts=Chem.SanitizeFlags.SANITIZE_FINDRADICALS| \
+                 Chem.SanitizeFlags.SANITIZE_KEKULIZE| \
+                 Chem.SanitizeFlags.SANITIZE_SETHYBRIDIZATION| \
+                 Chem.SanitizeFlags.SANITIZE_SYMMRINGS| \
+                 Chem.SanitizeFlags.SANITIZE_ADJUSTHS
+    if aromatize:
+        sanitizeOpts=sanitizeOpts|Chem.SanitizeFlags.SANITIZE_SETAROMATICITY| \
+                                  Chem.SanitizeFlags.SANITIZE_SETCONJUGATION
+
+    sanitization_result = Chem.SanitizeMol(mol,sanitizeOps=sanitizeOpts,
                                      catchErrors=True)
     if sanitization_result != Chem.SanitizeFlags.SANITIZE_NONE:
         print("Cannot sanitize file: %s"%file)
         import sys
         sys.exit()
+
+    # assign rdkit stereochemistry tags to be used for initializing idCode (when necessary)
+    if assignRDKitStereo:
+        Chem.AssignStereochemistryFrom3D(mol)
     return mol,M
 
 
