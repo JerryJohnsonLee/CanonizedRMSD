@@ -43,7 +43,7 @@ def OutputInterrelationship(collection,sequenceA,sequenceB,removeHs):
         else:
             print(str(item[0]+1).center(16)+"  "+str(item[1]+1).center(16))
 
-def Main(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False,no_alignment=False,qcp=False,removeHs=False,tiebreaking=True):  
+def Main(source1,source2,saveMediates=False,outputInterrelationship=False,no_isomerism=False,identity_check=False,no_alignment=False,qcp=False,removeHs=False,tiebreaking=True):  
     if(saveMediates):
         if(file1State):
             address1=source1.split('.')[0]
@@ -58,7 +58,7 @@ def Main(source1,source2,saveMediates=False,outputInterrelationship=False,no_iso
         appending=[0,0,0,0]
     molA,A=formatting.Read(source1,appending[0],file1State,removeHs)
     molB,B=formatting.Read(source2,appending[1],file2State,removeHs)
-    result = Calculate(molA, molB, appending, saveMediates, no_isomerism, no_alignment, qcp, tiebreaking)
+    result = Calculate(molA, molB, appending, saveMediates, no_isomerism, identity_check, no_alignment, qcp, tiebreaking)
     if result == -1:
         print("Two input molecules are not identical!")
         sys.exit()
