@@ -77,7 +77,7 @@ def Main(source1,source2,saveMediates=False,outputInterrelationship=False,no_iso
         OutputInterrelationship(GetInterrelationship(contentA,contentMinB),A,B,removeHs)
 
 
-def Calculate(molA, molB, appending=[0,0,0,0], saveMediates=False, no_isomerism=False, no_alignment=False, qcp=False, tiebreaking=True, quiet=False):
+def Calculate(molA, molB, appending=[0,0,0,0], saveMediates=False, no_isomerism=False, identity_check=False, no_alignment=False, qcp=False, tiebreaking=True, quiet=False):
     molRA=Chem.RemoveHs(molA)
     molRB=Chem.RemoveHs(molB)
     #start_time=clock()
@@ -86,12 +86,13 @@ def Calculate(molA, molB, appending=[0,0,0,0], saveMediates=False, no_isomerism=
     canonizedA=formatting.SequenceExchanger(molA,appending[2],contentA)
     contentRA,_=main.CanonizedSequenceRetriever(molRA,False,no_isomerism,no_Hs=True)
     contentRB,_=main.CanonizedSequenceRetriever(molRB,False,no_isomerism,no_Hs=True)
-    if not main.JudgeIdentity(contentRA,contentRB):
-        if saveMediates:
-            formatting.SequenceExchanger(molB,appending[3],contentB)
-        return -1
-    if not quiet:
-        print("Based on non-hydrogen molecule graph, the two input molecules are identical!")
+    if identity_check:
+        if not main.JudgeIdentity(contentRA,contentRB):
+            if saveMediates:
+                formatting.SequenceExchanger(molB,appending[3],contentB)
+            return -1
+        if not quiet:
+            print("Based on non-hydrogen molecule graph, the two input molecules are identical!")
     (ma,ea)=formatting.FormMat(canonizedA)
     if tiebreaking:
         minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,False,no_alignment,qcp) 
@@ -153,6 +154,7 @@ if __name__=="__main__":
     parser.add_argument("-s","--save",action="store_true",help="save intermediate results")
     parser.add_argument("-m","--mapping",action="store_true",help="output atom mapping relationship with two molecules")
     parser.add_argument('-i',"--ignore_isomerism",action="store_true",help="ignore geometric and stereometric isomerism when canonizing")
+    parser.add_argument('-ic',"--identity_check",action="store_true",help="perform molecule identity check based on non-hydrogen graph before canonizing")
     parser.add_argument('-na',"--no_alignment",action="store_true",help="do not apply molecule alignment Kabsch or QCP algorithm when calculating RMSD")
     parser.add_argument('-alg', "--algorithm", choices=["Kabsch","QCP"],default="Kabsch",help="algorithm to calculate RMSD, default to Kabsch")
     parser.add_argument('-r',"--removeHs",action="store_true",help="remove H atoms")
@@ -175,5 +177,6 @@ if __name__=="__main__":
         sys.exit()
     use_qcp = (args.algorithm == "QCP")
     branching_tiebreaking = not args.arbitrary_tiebreaking
-    Main(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.no_alignment,use_qcp,args.removeHs,branching_tiebreaking)
+    Main(args.file1,args.file2,args.save,args.mapping,args.ignore_isomerism,args.identity_check, \
+         args.no_alignment,use_qcp,args.removeHs,branching_tiebreaking)
 
