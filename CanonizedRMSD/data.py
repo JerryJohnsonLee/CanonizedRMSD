@@ -57,3 +57,26 @@ class CanonizedMapping:
         '''Save the canonized mapping to a file.'''
         with open(path, 'w') as f:
             f.write(str(self))
+
+    @property
+    def original_to_canonized_mapping(self) -> List:
+        '''Get the mapping from original index to canonized index.'''
+        return [i["canonized"] for i in sorted(self.lst, key=lambda p:p["original"])]
+    
+    @property
+    def canonized_to_original_mapping(self) -> List:
+        '''Get the mapping from canonized index to original index.'''
+        return [i["original"] for i in sorted(self.lst, key=lambda p:p["canonized"])]
+
+@dataclass
+class CanonizedRMSDResult(RMSDResult):
+    file1_mapping: CanonizedMapping = None
+    file2_mapping: CanonizedMapping = None
+
+    @classmethod
+    def from_rmsd_result(cls, rmsd_result: RMSDResult):
+        '''Update the RMSD result with the values from the RMSD result.'''
+        return cls(rmsd=rmsd_result.rmsd, 
+                   transition=rmsd_result.transition, 
+                   rotation=rmsd_result.rotation, 
+                   transformed=rmsd_result.transformed)

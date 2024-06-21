@@ -3,9 +3,11 @@ import numpy as np
 import formatting
 import os
 import sys
-import time
+from typing import Literal
 
 from CanonizedRMSD.data import *
+from CanonizedRMSD.utils import check_identity, check_elements
+from CanonizedRMSD.rmsd import RMSD_CALCULATORS
 
 class atom:
     def __init__(self,a=None,OriginalIndex=0,CopyFrom=None,addRDKitStereo=False,minAtomRingSize=0,coord=None):
@@ -90,20 +92,22 @@ class atom:
             self.doubleBondConnectAtom=doubleBondAtom
 
 
+
 def get_canonized_mapping(
         mol: Chem.rdchem.Mol,
         serial: bool=False,
         no_isomerism: bool=False,
-        unbroken_molecule=None,
+        unbroken_molecule_container=[],
         ma=None,
         ea=None,
         no_Hs=False,
         no_alignment=False,
         qcp=False,
         stereo=False) -> CanonizedMapping:
-    if not unbroken_molecule:
+    if len(unbroken_molecule_container) == 0:
         assert mol is not None, "Molecule is None"
         unbroken_molecule = canonize_molecule(mol,no_isomerism,no_Hs,stereo=stereo)
+        unbroken_molecule_container.append(unbroken_molecule)
     if serial:
         return branching_tiebreaking(mol,unbroken_molecule,ma,ea,no_alignment,qcp)
     else:
@@ -114,6 +118,55 @@ def get_canonized_mapping(
                        "item":item} for item in collection]
         mapping = CanonizedMapping(result)
         return mapping
+    
+def check_noH_identity(mol_A: Chem.rdchem.Mol,
+                       mol_B: Chem.rdchem.Mol,
+                       no_isomerism: bool=False) -> bool:
+    mol_A_noH = Chem.RemoveHs(mol_A)
+    mol_B_noH = Chem.RemoveHs(mol_B)
+    mapping_A_noH = get_canonized_mapping(mol_A_noH, serial=False, no_isomerism=no_isomerism, no_Hs=True)
+    mapping_B_noH = get_canonized_mapping(mol_B_noH, serial=False, no_isomerism=no_isomerism, no_Hs=True)
+    identity = check_identity(mapping_A_noH, mapping_B_noH)
+    return identity
+
+def calc_canonical_rmsd(mol_A: Chem.rdchem.Mol,
+                        mol_B: Chem.rdchem.Mol, 
+                        no_isomerism: bool=False, 
+                        identity_check: bool=False, 
+                        no_alignment: bool=False, 
+                        algorithm: Literal["Kabsch", "QCP"]="Kabsch", 
+                        tiebreaking: bool=True) -> CanonizedRMSDResult:
+    mapping_A = get_canonized_mapping(mol_A, serial=False, no_isomerism=no_isomerism)
+    # prepare a container for the unbroken molecule so that it can be used later
+    unbroken_molecule_container = []
+    temp_mapping_B = get_canonized_mapping(mol_B, serial=False, no_isomerism=no_isomerism,
+                                      unbroken_molecule_container=unbroken_molecule_container)
+
+    if identity_check:
+        if not check_noH_identity(mol_A, mol_B, no_isomerism):
+            raise RuntimeError("The two input molecules are not identical based on non-hydrogen molecule graph!")
+    canonical_mol_A = Chem.RenumberAtoms(mol_A, newOrder=mapping_A.canonized_to_original_mapping)
+    coord_mat_A = canonical_mol_A.GetConformer().GetPositions()
+    elements_A = [atm.GetSymbol() for atm in canonical_mol_A.GetAtoms()]
+
+    if tiebreaking:
+        minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,False,no_alignment,qcp) 
+    else:
+        min_RMSD_mapping_B = temp_mapping_B
+        canonical_mol_B = Chem.RenumberAtoms(mol_B, newOrder=temp_mapping_B.canonized_to_original_mapping)
+        coord_mat_B = canonical_mol_B.GetConformer().GetPositions()
+        elements_B = [atm.GetSymbol() for atm in canonical_mol_B.GetAtoms()]
+
+        if check_elements(elements_A, elements_B):
+            if no_alignment:
+                calculator_name = "no_alignment"
+            else:
+                calculator_name = algorithm.lower()
+            rmsd_result = RMSD_CALCULATORS[calculator_name](coord_mat_A, coord_mat_B)
+    canonized_result = CanonizedRMSDResult.from_rmsd_result(rmsd_result)
+    canonized_result.file1_mapping = mapping_A
+    canonized_result.file2_mapping = min_RMSD_mapping_B
+    return canonized_result
 
 
 def deepcopy(worklist):
@@ -545,19 +598,7 @@ def canonize_molecule(molecule,no_isomerism=False,no_H=False,stereo=False):
 
 
 
-def JudgeIdentity(serialA,serialB):
-    for item in serialA:
-        atomA=item["item"]
-        atomBsource=[itemB["item"] for itemB in serialB if itemB["canonized"]==item["canonized"]]
-        if len(atomBsource)==0:
-            return False
-        atomB=atomBsource[0]
-        if not (atomA.neighborIndexs == atomB.neighborIndexs \
-            and atomA.stereochemistry==atomB.stereochemistry):
-            # print(atomA.stereochemistry)
-            # print(atomB.stereochemistry)
-            return False
-    return True
+
 
 def CheckValidity(filename):
     # state -1: cannot open  0: unrecognized file type   1: mol type   2: mol2 type   3: pdb type

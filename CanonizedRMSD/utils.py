@@ -1,7 +1,11 @@
 '''Utility functions to do format conversions, structure conversions, etc.'''
 from io import StringIO
-from typing import List
+from rdkit import Chem
+from typing import List, Union
 import numpy as np
+
+from CanonizedRMSD.data import CanonizedMapping
+from CanonizedRMSD.io import read
 
 
 def remove_Hs_from_mol_block(input_mol_block: str) -> str:
@@ -89,3 +93,49 @@ def get_coords_elements(mol_block: str):
         points.append([float(l[:10]), float(l[10:20]), float(l[20:30])])
         elements.append(l[31:34].strip())
     return np.matrix(points), elements
+
+def check_identity(mapping_mol_A: CanonizedMapping,
+                   mapping_mol_B: CanonizedMapping) -> bool:
+    '''check whether the two molecules are identical according to the canonized mapping.
+    Molecules are considered identical if the two mappings are the same length, and atoms
+    with the same canonized index have the same stereochemistry tag and canonized neighbor indices.
+    '''
+    for item in mapping_mol_A.lst:
+        atom_A = item["item"]
+        atom_B_source = [item_B["item"] for item_B in mapping_mol_B.lst
+                          if item_B["canonized"] == item["canonized"]]
+        if len(atom_B_source) == 0:
+            return False
+        atom_B = atom_B_source[0]
+        if not (atom_A.neighborIndexs == atom_B.neighborIndexs \
+            and atom_A.stereochemistry == atom_B.stereochemistry):
+            return False
+    return True
+
+def prepare_molecule(input: Union[str, Chem.rdchem.Mol],
+                     removeH: bool=False, aromatize: bool=False,
+                     assign_rdkit_stereo: bool=False):
+    '''read in a molecule from either the file path or the RDKit molecule object, and 
+    return the rdkit molecule object and all heavy atom indices
+
+    Args:
+        input: str or RDKit Mol object, the input file path or RDKit molecule object
+        removeH: bool, whether to remove H atoms
+        aromatize: bool, whether to aromatize the molecule
+        assign_rdkit_stereo: bool, whether to assign stereochemistry tags using RDKit 
+            Chem.AssignStereochemistryFrom3D method
+
+    Returns:
+        mol: RDKit Mol object, the molecule read from the file
+        non_H_indices: list, the indices of the non-H atoms in the molecule
+    '''
+    if isinstance(input, str):
+        molecule, non_H_indices = read(input, removeH=removeH,
+                                        aromatize=aromatize, 
+                                        assign_rdkit_stereo=assign_rdkit_stereo)
+    elif isinstance(input, Chem.rdchem.Mol):
+        molecule = input
+        non_H_indices = [atom.GetIdx() for atom in molecule.GetAtoms() if atom.GetSymbol() != 'H']
+    else:
+        raise ValueError("Input file must be a file path or an RDKit molecule object!")
+    return molecule, non_H_indices

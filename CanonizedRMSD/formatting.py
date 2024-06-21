@@ -6,19 +6,11 @@ from scipy import optimize
 import numpy as np
 import os
 
-R_TYPE=4
-S_TYPE=3
-Z_TYPE=6
-E_TYPE=5
-r_TYPE=2
-s_TYPE=1
-AROMATIC=7
+from CanonizedRMSD.data import *
 
-
-
-
-
-
+def reorder_atom_with_mapping(mol: Chem.rdchem.Mol, 
+                              mapping: CanonizedMapping) -> Chem.rdchem.Mol:
+    
 #  Sequence changing module
 
 def SequenceExchanger(f1,f2,dictionary):

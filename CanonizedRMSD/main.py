@@ -1,8 +1,9 @@
 from rdkit import Chem
+from typing import Literal, Union  
 
-from CanonizedRMSD.io import read
-from CanonizedRMSD.core import get_canonized_mapping
-from CanonizedRMSD.data import CanonizedMapping
+from CanonizedRMSD.utils import prepare_molecule
+from CanonizedRMSD.core import get_canonized_mapping, calc_canonical_rmsd
+from CanonizedRMSD.data import CanonizedMapping, CanonizedRMSDResult
 
 
 class Canonizer:
@@ -17,13 +18,39 @@ class Canonizer:
         self.aromatize = aromatize
         self.rdkit_stereo = rdkit_stereo
 
-    def canonize(self, input_file: str) -> CanonizedMapping:
-        molecule, _ = read(input_file, removeH=False,
-                            aromatize=self.aromatize, assign_rdkit_stereo=self.rdkit_stereo)
+    def canonize(self, input_file: Union[str, Chem.rdchem.Mol]) -> CanonizedMapping:
+        molecule, _ = prepare_molecule(input_file, 
+                                       removeH=False, 
+                                       aromatize=self.aromatize, 
+                                       assign_rdkit_stereo=self.rdkit_stereo)
         molecule_noH = Chem.RemoveHs(molecule)
         mapping = get_canonized_mapping(molecule_noH, stereo=self.rdkit_stereo)
         return mapping
 
 class RMSDCalc:
-    def __init__(self) -> None:
-        pass
+    '''
+    A calculator for canonized and symmetry-corrected RMSD calculation between two molecules.
+    '''
+    def __init__(self, ignore_isomerism: bool=False,
+                 identity_check: bool=False,
+                 remove_Hs: bool=False,
+                 rmsd_algorithm: Literal["Kabsch", "QCP"]="Kabsch",
+                 symmetry_correction: bool=True) -> None:
+        self.ignore_isomerism = ignore_isomerism
+        self.identity_check = identity_check
+        self.remove_Hs = remove_Hs
+        self.rmsd_algorithm = rmsd_algorithm
+        self.symmetry_correction = symmetry_correction
+
+    def run(self, input_file_1: Union[str, Chem.rdchem.Mol],
+                  input_file_2: Union[str, Chem.rdchem.Mol],
+                  no_alignment: bool=False) -> CanonizedRMSDResult:
+        mol_A, non_H_idx_A = prepare_molecule(input_file_1, removeH=self.remove_Hs)
+        mol_B, non_H_idx_B = prepare_molecule(input_file_2, removeH=self.remove_Hs)
+        return calc_canonical_rmsd(mol_A, 
+                                   mol_B, 
+                                   no_isomerism=self.ignore_isomerism,
+                                   identity_check=self.identity_check,
+                                   no_alignment=no_alignment,
+                                   algorithm=self.rmsd_algorithm,
+                                   tiebreaking=self.symmetry_correction)
