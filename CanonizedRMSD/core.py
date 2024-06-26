@@ -3,129 +3,38 @@ import numpy as np
 import formatting
 import os
 import sys
-from typing import Literal
+from typing import Literal, Tuple
 
 from CanonizedRMSD.data import *
 from CanonizedRMSD.utils import check_identity, check_elements
-from CanonizedRMSD.rmsd import RMSD_CALCULATORS
-
-class atom:
-    def __init__(self,a=None,OriginalIndex=0,CopyFrom=None,addRDKitStereo=False,minAtomRingSize=0,coord=None):
-        if CopyFrom==None:
-            self.source=a
-            self.degree=a.GetDegree()
-            self.atomicNumber=a.GetAtomicNum()
-            self.attatchedHs=a.GetTotalNumHs(includeNeighbors=True)
-            self.charge=a.GetNumRadicalElectrons()
-            self.isotope=a.GetIsotope()
-            self.minAtomRingSize=minAtomRingSize
-            self.stereochemistry=0
-            if addRDKitStereo:
-                self.rdkitStereoTag=int(a.GetChiralTag())
-            else:
-                self.rdkitStereoTag=0
-            self.bonds=a.GetBonds()
-            self.bondTypes=[bond.GetBondType() for bond in a.GetBonds()]
-            self.doubleBondConnectAtom=None
-            self.neighbors=()
-            self.neighborIndexs=[]
-            self.neighborElements=()
-            self.originalIndex=OriginalIndex
-            self.currentIndex=0
-            self.isComplete=False
-            self.coordinate=coord
-        else:
-            self.source=CopyFrom.source
-            self.neighbors=()
-            self.neighborIndexs=[]
-            self.originalIndex=CopyFrom.originalIndex
-            self.currentIndex=CopyFrom.currentIndex
-            self.atomicNumber=CopyFrom.atomicNumber
-            self.bonds=CopyFrom.bonds
-            self.isComplete=CopyFrom.isComplete
-            self.stereochemistry=CopyFrom.stereochemistry
-            self.doubleBondConnectAtom=CopyFrom.doubleBondConnectAtom
-            self.idcode=CopyFrom.idcode
-            self.minAtomRingSize=CopyFrom.minAtomRingSize
-            self.coordinate=CopyFrom.coordinate
-
-    def assignIdCode(self, loose_criterion=False, no_H=False):
-        # new criterion:
-        #    ***                ***                  *       *       *        *           *
-        # atomicNum    largestNeighborElement   connection  n_Hs  isotope   charge  rdkitStereoTag
-        if loose_criterion:
-            connection=self.degree
-        else:
-            connection=self.degree+self.bondTypes.count(Chem.rdchem.BondType.DOUBLE) \
-            +self.bondTypes.count(Chem.rdchem.BondType.TRIPLE)*2 \
-            +self.bondTypes.count(Chem.rdchem.BondType.AROMATIC)*0.5
-        if len(self.neighbors)==0:
-            largestNeighborElement=0  # i.e. single ions or single atoms
-        else:
-            largestNeighborElement=max([item.atomicNumber for item in self.neighbors])
-        idCode=0
-        idCode+=self.atomicNumber*1e8
-        idCode+=largestNeighborElement*1e5
-        idCode+=connection*1e4
-        if not no_H:
-            idCode+=self.attatchedHs*1e3
-        idCode+=self.isotope*100
-        if not loose_criterion:
-            idCode+=(self.charge+4)*10   # to avoid problem with negative charges
-        idCode+=self.rdkitStereoTag
-        self.idcode=int(idCode)
-
-    def completeNeighborElements(self):
-        self.neighborElements=tuple(sorted([neighborAtom.source.GetAtomicNum() \
-     for neighborAtom in self.neighbors],reverse=True))   # a tuple is used to make it hashable
-
-    def updateNeighborIndexs(self):
-        self.neighborIndexs=[item.currentIndex for item in self.neighbors]
-        self.neighborIndexs.sort(reverse=True)
-
-    def decideDoubleBondConnectedAtom(self):
-        if self.bondTypes.count(DOUBLE_BOND) == 1:
-        # if self.atomicNumber==6 and DOUBLE_BOND in self.bondTypes:
-            doubleBond=[bond for bond in self.bonds if bond.GetBondType()==DOUBLE_BOND][0]
-            doubleBondAtom=[item for item in self.neighbors \
-                if item.source.GetIdx() in (doubleBond.GetBeginAtomIdx(),doubleBond.GetEndAtomIdx())][0]
-            self.doubleBondConnectAtom=doubleBondAtom
-
+from CanonizedRMSD.rmsd import RMSD_CALCULATORS, calc_rmsd_with_mapping
 
 
 def get_canonized_mapping(
         mol: Chem.rdchem.Mol,
-        serial: bool=False,
         no_isomerism: bool=False,
         unbroken_molecule_container=[],
-        ma=None,
-        ea=None,
         no_Hs=False,
-        no_alignment=False,
-        qcp=False,
         stereo=False) -> CanonizedMapping:
     if len(unbroken_molecule_container) == 0:
         assert mol is not None, "Molecule is None"
         unbroken_molecule = canonize_molecule(mol,no_isomerism,no_Hs,stereo=stereo)
         unbroken_molecule_container.append(unbroken_molecule)
-    if serial:
-        return branching_tiebreaking(mol,unbroken_molecule,ma,ea,no_alignment,qcp)
-    else:
-        collection = deepcopy(unbroken_molecule)
-        ordinary_tiebreaking(collection)
-        result = [{"original":item.originalIndex,
-                       "canonized":item.currentIndex,
-                       "item":item} for item in collection]
-        mapping = CanonizedMapping(result)
-        return mapping
+    # if serial:
+    #     return branching_tiebreaking(mol,unbroken_molecule,ma,ea,no_alignment,qcp)
+
+    collection = deepcopy(unbroken_molecule)
+    ordinary_tiebreaking(collection)
+    mapping = CanonizedMapping.from_atom_list(collection)
+    return mapping
     
 def check_noH_identity(mol_A: Chem.rdchem.Mol,
                        mol_B: Chem.rdchem.Mol,
                        no_isomerism: bool=False) -> bool:
     mol_A_noH = Chem.RemoveHs(mol_A)
     mol_B_noH = Chem.RemoveHs(mol_B)
-    mapping_A_noH = get_canonized_mapping(mol_A_noH, serial=False, no_isomerism=no_isomerism, no_Hs=True)
-    mapping_B_noH = get_canonized_mapping(mol_B_noH, serial=False, no_isomerism=no_isomerism, no_Hs=True)
+    mapping_A_noH = get_canonized_mapping(mol_A_noH, no_isomerism=no_isomerism, no_Hs=True)
+    mapping_B_noH = get_canonized_mapping(mol_B_noH, no_isomerism=no_isomerism, no_Hs=True)
     identity = check_identity(mapping_A_noH, mapping_B_noH)
     return identity
 
@@ -136,10 +45,10 @@ def calc_canonical_rmsd(mol_A: Chem.rdchem.Mol,
                         no_alignment: bool=False, 
                         algorithm: Literal["Kabsch", "QCP"]="Kabsch", 
                         tiebreaking: bool=True) -> CanonizedRMSDResult:
-    mapping_A = get_canonized_mapping(mol_A, serial=False, no_isomerism=no_isomerism)
+    mapping_A = get_canonized_mapping(mol_A, no_isomerism=no_isomerism)
     # prepare a container for the unbroken molecule so that it can be used later
     unbroken_molecule_container = []
-    temp_mapping_B = get_canonized_mapping(mol_B, serial=False, no_isomerism=no_isomerism,
+    temp_mapping_B = get_canonized_mapping(mol_B, no_isomerism=no_isomerism,
                                       unbroken_molecule_container=unbroken_molecule_container)
 
     if identity_check:
@@ -150,27 +59,88 @@ def calc_canonical_rmsd(mol_A: Chem.rdchem.Mol,
     elements_A = [atm.GetSymbol() for atm in canonical_mol_A.GetAtoms()]
 
     if tiebreaking:
-        minRmsd,canonizedMinB,contentMinB=main.CanonizedSequenceRetriever(molB,True,no_isomerism,unbrokenB,ma,ea,False,no_alignment,qcp) 
+        min_RMSD_mapping_B, rmsd_result = branching_tiebreaking(mol_B, unbroken_molecule_container[0], coord_mat_A, elements_A, 
+                                                     no_alignment=no_alignment, algorithm=algorithm)
     else:
         min_RMSD_mapping_B = temp_mapping_B
-        canonical_mol_B = Chem.RenumberAtoms(mol_B, newOrder=temp_mapping_B.canonized_to_original_mapping)
-        coord_mat_B = canonical_mol_B.GetConformer().GetPositions()
-        elements_B = [atm.GetSymbol() for atm in canonical_mol_B.GetAtoms()]
-
-        if check_elements(elements_A, elements_B):
-            if no_alignment:
-                calculator_name = "no_alignment"
-            else:
-                calculator_name = algorithm.lower()
-            rmsd_result = RMSD_CALCULATORS[calculator_name](coord_mat_A, coord_mat_B)
+        rmsd_result = calc_rmsd_with_mapping(coord_mat_A, elements_A, mol_B, min_RMSD_mapping_B, no_alignment=no_alignment, algorithm=algorithm)
     canonized_result = CanonizedRMSDResult.from_rmsd_result(rmsd_result)
     canonized_result.file1_mapping = mapping_A
     canonized_result.file2_mapping = min_RMSD_mapping_B
     return canonized_result
 
 
+def branching_tiebreaking(
+    mol_B: Chem.rdchem.Mol,
+    unbroken_molecule: List[atom],
+    coord_mat_A: np.ndarray,
+    elements_A: List,
+    no_alignment: bool=False,
+    algorithm: Literal["Kabsch", "QCP"]="Kabsch") -> Tuple[CanonizedMapping, RMSDResult]:
+    unbroken_idxs = []
+    unbroken_idx_2_original = {}
+    for item in unbroken_molecule:
+        if not item.isComplete:
+            unbroken_idxs.append(item.currentIndex)
+            AddItem(unbroken_idx_2_original, item.currentIndex, item.originalIndex)
+    # when there is no unbroken index, simply calculate RMSD and return
+    if len(unbroken_idxs) == 0:
+        mapping = CanonizedMapping.from_atom_list(unbroken_molecule)
+        rmsd_result = calc_rmsd_with_mapping(coord_mat_A, elements_A, mol_B, mapping, no_alignment=no_alignment, algorithm=algorithm)
+        return mapping, rmsd_result
+
+    selected_idx = select_best_idx_for_tiebreaking(unbroken_idxs)
+    selected_number = len(unbroken_idx_2_original[selected_idx])
+    items_with_chosen_idx = [item for item in unbroken_molecule if item.currentIndex == selected_idx]
+
+    # enumerate all possibilities of selecting the first atom to assign complete tag
+    min_rmsd = RMSDResult(99999)
+    min_rmsd_mapping = None
+    min_rmsd_atom_lst = None
+
+    for i in range(selected_number):
+        molecule_tmp = deepcopy(unbroken_molecule)
+        items_with_chosen_idx = [item for item in molecule_tmp if item.currentIndex == selected_idx]
+        for idx in range(selected_number):
+            if idx == i:
+                items_with_chosen_idx[idx].isComplete = True
+            else:
+                # for the rest, increase their index by 1
+                items_with_chosen_idx[idx].currentIndex += 1
+        
+        working_set = set()
+        for item in molecule_tmp:
+            if not item.isComplete:
+                item.updateNeighborIndexs()
+            working_set.add(item)
+        
+        Refine(working_set)
+        tmp_mapping = CanonizedMapping.from_atom_list(molecule_tmp)
+        rmsd_result = calc_rmsd_with_mapping(coord_mat_A, elements_A, mol_B, tmp_mapping, 
+                                             no_alignment=no_alignment, algorithm=algorithm, completed_atoms_only=True)
+
+        if rmsd_result < min_rmsd:
+            min_rmsd = rmsd_result
+            min_rmsd_mapping = tmp_mapping
+            min_rmsd_atom_lst = molecule_tmp
+
+    
+    # finally, decide whether the tiebreaking is complete (so that the results can be returned back to the parent function),
+    # or recursive treatment is needed
+    complete = True
+    for item in molecule_tmp:
+        if not item.isComplete:
+            complete=False
+            break
+
+    if complete:
+        return min_rmsd_mapping, min_rmsd
+    else:
+        return branching_tiebreaking(mol_B, min_rmsd_atom_lst, coord_mat_A, elements_A,
+                                     no_alignment=no_alignment, algorithm=algorithm)
+
 def deepcopy(worklist):
-    newlist=[]
+    newlist = []
     for item in worklist:
         newlist.append(atom(CopyFrom=item))
     CompleteNeighbor(newlist)
@@ -200,6 +170,8 @@ def SelectBestIndex(workset):
         indexNumbers.append({"index":number,"count":currentIndexs.count(number)})
     selectedItem=sorted(indexNumbers,key=lambda x:(-x["count"],-x["index"]))[0]
     return selectedItem["index"]
+
+
 
 def Refine(workset):
     dictionaryForIndexs={}
@@ -245,7 +217,7 @@ def Refine(workset):
                             if not item.isComplete:
                                 addItemWithCurrentIndexMap(item,workset,currentIndexMap)
 
-def SelectBestIndexForTieBreaking(unbrokenIndexs):
+def select_best_idx_for_tiebreaking(unbrokenIndexs):
     indexNumbers=[]
     for index in set(unbrokenIndexs):
         indexNumbers.append({'index':index,
@@ -255,94 +227,15 @@ def SelectBestIndexForTieBreaking(unbrokenIndexs):
     selectedIndex=selectedItem['index']
     return selectedIndex
 
-def branching_tiebreaking(molB,templateWorklist,ma,ea,no_alignment,qcp):
-    unbrokenIndexs=[]
-    unbrokenIndexToOriginal={}
-    for item in templateWorklist:
-        if not item.isComplete:
-            unbrokenIndexs.append(item.currentIndex)
-            AddItem(unbrokenIndexToOriginal,item.currentIndex,item.originalIndex)
-    # when there is no unbroken index, simply calculate RMSD and return
-    if len(unbrokenIndexs)==0:
-        contentB=[{"original":k.originalIndex,"canonized":k.currentIndex,"item":k} for k in templateWorklist]
-        canonizedB=formatting.SequenceExchanger(molB,0,contentB)
-        (mb,eb)=formatting.FormMat(canonizedB)
-        if formatting.CheckElements(ea,eb):
-            if (no_alignment):
-                rmsd=np.linalg.norm(ma-mb)/np.sqrt(ma.shape[0])
-            elif (qcp==False):
-                rmsd=formatting.kabsch_rmsd(ma,mb,no_alignment=no_alignment)
-            else:
-                MA=ma.A
-                MB=mb.A
-                rmsd=formatting.qcp_rmsd(MA,MB)
-        return rmsd, canonizedB, contentB
-    selectedIndex=SelectBestIndexForTieBreaking(unbrokenIndexs)
-    selectedNumber=len(unbrokenIndexToOriginal[selectedIndex])
-    itemsWithChosenIndex=[item for item in templateWorklist if item.currentIndex==selectedIndex]
 
-    # enumerate all possibilities of selecting the first atom to assign complete tag
-    minRmsd=-1
-    canonizedMinB=None
-    contentMinB=None
-    List=None
-    for i in range(selectedNumber):
-        newList=deepcopy(templateWorklist)
-        itemsWithChosenIndex=[item for item in newList if item.currentIndex==selectedIndex]
-        for idx in range(selectedNumber):
-            if idx==i:
-                itemsWithChosenIndex[idx].isComplete=True
-            else:
-                # for the rest, increase their index by 1
-                itemsWithChosenIndex[idx].currentIndex+=1
-        
-        newSet=set()
-        for item in newList:
-            if not item.isComplete:
-                item.updateNeighborIndexs()
-            newSet.add(item)
-        
-        Refine(newSet)
-        contentB=[{"original":k.originalIndex,"canonized":k.currentIndex,"item":k} for k in newList]
-        canonizedB=formatting.SequenceExchanger(molB,0,contentB)
-        (mb,eb)=formatting.FormMat(canonizedB)
-        if formatting.CheckElements(ea,eb):
-            # only calculate rmsd based on completed atoms
-            completeFilter=np.array([item['item'].isComplete for item in sorted(contentB,key=lambda x:x['canonized'])])
-            maCalc=ma[completeFilter]
-            mbCalc=mb[completeFilter]
-            if (no_alignment):
-                rmsd=np.linalg.norm(maCalc-mbCalc)/np.sqrt(maCalc.shape[0])
-            elif (qcp==False):
-                rmsd=formatting.kabsch_rmsd(maCalc,mbCalc,no_alignment=no_alignment)
-            else:
-                MA=maCalc.A
-                MB=mbCalc.A
-                rmsd=formatting.qcp_rmsd(MA,MB)
-        else:
-            sys.exit()
-        if minRmsd==-1 or minRmsd>rmsd:
-            minRmsd=rmsd
-            canonizedMinB=canonizedB
-            contentMinB=contentB
-            List=newList
-    complete=True
-    for item in newList:
-        if not item.isComplete:
-            complete=False
-            break
-    if complete:
-        return minRmsd,canonizedMinB,contentMinB
-    else:
-        return branching_tiebreaking(molB,List,ma,ea,no_alignment,qcp)
 
 def ordinary_tiebreaking(worklist):
-    unbrokenIndexs=[]
+    unbrokenIndexs = []
     for item in worklist:
         if not item.isComplete:
             unbrokenIndexs.append(item.currentIndex)
-    if len(unbrokenIndexs)!=0:
-        selectedIndex=SelectBestIndexForTieBreaking(unbrokenIndexs)
+    if len(unbrokenIndexs) != 0:
+        selectedIndex = select_best_idx_for_tiebreaking(unbrokenIndexs)
 
         # choose one item to assign complete tag. For all the rest ones with the same index,
         # assign +1 index. Then do refinement
@@ -599,25 +492,3 @@ def canonize_molecule(molecule,no_isomerism=False,no_H=False,stereo=False):
 
 
 
-
-def CheckValidity(filename):
-    # state -1: cannot open  0: unrecognized file type   1: mol type   2: mol2 type   3: pdb type
-    f1 = os.path.basename(filename)
-    if len(f1.split('.')) > 1:
-        state = -1
-        extension=f1.split('.')[1].strip().lower()
-        if extension in ['sdf','mol','rxn']:
-            state = 1
-        elif extension in ['mol2','ml2']:
-            state = 2
-        elif extension in ['pdb']:
-            state = 3
-    else:
-        state = 0
-    return state
-
-
-if __name__=='__main__':
-    
-    content=Chem.MolFromMolFile('testsets/test4/1_rdkit.mol')
-    CanonizedSequenceRetriever(content)

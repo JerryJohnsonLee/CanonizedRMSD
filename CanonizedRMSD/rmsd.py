@@ -5,9 +5,11 @@ or calculating without alignment
 
 import numpy as np
 from scipy import optimize
-from typing import Tuple
+from typing import Tuple, Literal
+from rdkit import Chem
 
-from CanonizedRMSD.data import RMSDResult
+from CanonizedRMSD.data import RMSDResult, CanonizedMapping
+from CanonizedRMSD.utils import check_elements
 
 def center_of_geometry(coordinates: np.ndarray) -> np.ndarray:
     # Center of geometry for the given coordinates.
@@ -147,6 +149,37 @@ def no_alignment_rmsd(a: np.ndarray, b: np.ndarray):
     # Compute RMSD without alignment
     rmsd = np.linalg.norm(a - b) / np.sqrt(a.shape[0])
     return RMSDResult(rmsd=rmsd)
+
+def calc_rmsd_with_mapping(
+    coord_mat_reference: np.ndarray,
+    elements_reference: list,
+    mol_candidate: Chem.rdchem.Mol,
+    mapping: CanonizedMapping,
+    no_alignment: bool=False, 
+    algorithm: Literal["Kabsch", "QCP"]="Kabsch",
+    completed_atoms_only: bool=False
+) -> RMSDResult:
+    '''reorder atoms in the mol_candidate according to the canonized index mapping
+    specified by mapping, and then calculate RMSD with the reference molecule'''
+    canonical_candidate = Chem.RenumberAtoms(mol_candidate, 
+                                             newOrder=mapping.canonized_to_original_mapping)
+    coord_mat_candidate = canonical_candidate.GetConformer().GetPositions()
+    elements_candidate = [atm.GetSymbol() for atm in canonical_candidate.GetAtoms()]
+
+    if check_elements(elements_reference, elements_candidate):
+        # only calculate RMSD based on atoms that are completed when specified
+        if completed_atoms_only:
+            complete_filter = np.array([item['item'].isComplete for item in sorted(mapping.lst, key=lambda x:x['canonized'])])
+            coord_mat_reference = coord_mat_reference[complete_filter]
+            coord_mat_candidate = coord_mat_candidate[complete_filter]
+        if no_alignment:
+            calculator_name = "no_alignment"
+        else:
+            calculator_name = algorithm.lower()
+        rmsd_result = RMSD_CALCULATORS[calculator_name](coord_mat_reference, coord_mat_candidate)
+        return rmsd_result
+    else:
+        raise RuntimeError("Elements in the two molecules do not match.")
 
 RMSD_CALCULATORS = {
     'kabsch': kabsch_rmsd,

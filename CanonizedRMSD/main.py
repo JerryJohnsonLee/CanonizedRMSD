@@ -45,8 +45,8 @@ class RMSDCalc:
     def run(self, input_file_1: Union[str, Chem.rdchem.Mol],
                   input_file_2: Union[str, Chem.rdchem.Mol],
                   no_alignment: bool=False) -> CanonizedRMSDResult:
-        mol_A, non_H_idx_A = prepare_molecule(input_file_1, removeH=self.remove_Hs)
-        mol_B, non_H_idx_B = prepare_molecule(input_file_2, removeH=self.remove_Hs)
+        mol_A, _ = prepare_molecule(input_file_1, removeH=self.remove_Hs)
+        mol_B, _ = prepare_molecule(input_file_2, removeH=self.remove_Hs)
         return calc_canonical_rmsd(mol_A, 
                                    mol_B, 
                                    no_isomerism=self.ignore_isomerism,

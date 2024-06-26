@@ -8,10 +8,6 @@ import os
 
 from CanonizedRMSD.data import *
 
-def reorder_atom_with_mapping(mol: Chem.rdchem.Mol, 
-                              mapping: CanonizedMapping) -> Chem.rdchem.Mol:
-    
-#  Sequence changing module
 
 def SequenceExchanger(f1,f2,dictionary):
     sequence=[i["canonized"] for i in sorted(dictionary,key=lambda p:p["original"])]
