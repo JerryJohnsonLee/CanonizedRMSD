@@ -33,3 +33,6 @@ def main():
     print(results)
     if args.output is not None:
         results.save(args.output)
+
+if __name__ == "__main__":
+    main()

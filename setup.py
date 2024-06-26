@@ -9,6 +9,7 @@ setup(
     include_package_data=True,
     entry_points={'console_scripts': [
         'canonize = CanonizedRMSD.scripts.canonize:main',
+        'rmsd = CanonizedRMSD.scripts.canonized_rmsd:main',
     ]},
     version='1.0.0',
 )

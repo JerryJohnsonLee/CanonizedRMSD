@@ -18,83 +18,7 @@ DOUBLE_BOND = Chem.rdchem.BondType.DOUBLE
 AROMATIC_BOND = Chem.rdchem.BondType.AROMATIC
 stereochemical_tags = ['/', 's', 'r', 'S', 'R', 'E', 'Z', ':', '?']
 
-@dataclass
-class RMSDResult:
-    rmsd: float # The RMSD value
-    transition: np.ndarray = None  # The translation vector
-    rotation: np.ndarray = None  # The rotation matrix
-    transformed: np.ndarray = None  # The transformed coordinates
 
-    def __gt__(self, other: 'RMSDResult') -> bool:
-        '''Compare two RMSD results based on the RMSD value.'''
-        return self.rmsd > other.rmsd
-    
-    def __lt__(self, other: 'RMSDResult') -> bool:
-        '''Compare two RMSD results based on the RMSD value.'''
-        return self.rmsd < other.rmsd
-
-@dataclass
-class CanonizedMapping:
-    lst: List
-
-    def __post_init__(self) -> None:
-        self._sort()
-
-    def _sort(self) -> None:
-        '''Sort the canonized mapping in place.'''
-        self.lst = sorted(self.lst, key=lambda x: x['original'])
-        return self
-    
-    def __str__(self) -> str:
-        '''get the string representation of the canonized mapping.'''
-        output_results = ["Original Index     Canonized Index     Atom Type   Stereochemical Tag"]
-        output_results.append("-" * 80)
-        for item in self.lst:
-            output_results.append("{:>14}     {:>15}     {:>9}   {:>18}".format(\
-                item['original'] + 1, item['canonized'] + 1,\
-                item['item'].source.GetSymbol(), stereochemical_tags[item['item'].stereochemistry]))
-            
-        result = "\n".join(output_results)
-        return result
-    
-    def dataframe(self) -> pd.DataFrame:
-        '''Return the canonized mapping as a pandas DataFrame.'''
-        return pd.DataFrame(self.lst)
-    
-    def save(self, path: str) -> None:
-        '''Save the canonized mapping to a file.'''
-        with open(path, 'w') as f:
-            f.write(str(self))
-
-    @classmethod
-    def from_atom_list(cls, atom_list: List[atom]) -> 'CanonizedMapping':
-        '''Create a CanonizedMapping object from a list of Atoms.'''
-        return cls([{"original": atom.originalIndex,
-                     "canonized": atom.currentIndex, 
-                     "item": atom} for atom in atom_list])
-
-    @property
-    def original_to_canonized_mapping(self) -> List:
-        '''Get the mapping from original index to canonized index.'''
-        return [i["canonized"] for i in sorted(self.lst, key=lambda p:p["original"])]
-    
-    @property
-    def canonized_to_original_mapping(self) -> List:
-        '''Get the mapping from canonized index to original index.'''
-        return [i["original"] for i in sorted(self.lst, key=lambda p:p["canonized"])]
-
-@dataclass
-class CanonizedRMSDResult(RMSDResult):
-    file1_mapping: CanonizedMapping = None
-    file2_mapping: CanonizedMapping = None
-
-    @classmethod
-    def from_rmsd_result(cls, rmsd_result: RMSDResult):
-        '''Update the RMSD result with the values from the RMSD result.'''
-        return cls(rmsd=rmsd_result.rmsd, 
-                   transition=rmsd_result.transition, 
-                   rotation=rmsd_result.rotation, 
-                   transformed=rmsd_result.transformed)
 
 class atom:
     def __init__(self,a=None,OriginalIndex=0,CopyFrom=None,addRDKitStereo=False,minAtomRingSize=0,coord=None):
@@ -178,3 +102,103 @@ class atom:
                 if item.source.GetIdx() in (doubleBond.GetBeginAtomIdx(),doubleBond.GetEndAtomIdx())][0]
             self.doubleBondConnectAtom=doubleBondAtom
 
+
+@dataclass
+class RMSDResult:
+    rmsd: float # The RMSD value
+    transition: np.ndarray = None  # The translation vector
+    rotation: np.ndarray = None  # The rotation matrix
+    transformed: np.ndarray = None  # The transformed coordinates
+
+    def __gt__(self, other: 'RMSDResult') -> bool:
+        '''Compare two RMSD results based on the RMSD value.'''
+        return self.rmsd > other.rmsd
+    
+    def __lt__(self, other: 'RMSDResult') -> bool:
+        '''Compare two RMSD results based on the RMSD value.'''
+        return self.rmsd < other.rmsd
+
+@dataclass
+class CanonizedMapping:
+    lst: List
+
+    def __post_init__(self) -> None:
+        self._sort()
+
+    def _sort(self) -> None:
+        '''Sort the canonized mapping in place.'''
+        self.lst = sorted(self.lst, key=lambda x: x['original'])
+        return self
+    
+    def __str__(self) -> str:
+        '''get the string representation of the canonized mapping.'''
+        output_results = ["Original Index     Canonized Index     Atom Type   Stereochemical Tag"]
+        output_results.append("-" * 80)
+        for item in self.lst:
+            output_results.append("{:>14}     {:>15}     {:>9}   {:>18}".format(\
+                item['original'] + 1, item['canonized'] + 1,\
+                item['item'].source.GetSymbol(), stereochemical_tags[item['item'].stereochemistry]))
+            
+        result = "\n".join(output_results)
+        return result
+    
+    def dataframe(self) -> pd.DataFrame:
+        '''Return the canonized mapping as a pandas DataFrame.'''
+        return pd.DataFrame(self.lst)
+    
+    def save(self, path: str) -> None:
+        '''Save the canonized mapping to a file.'''
+        with open(path, 'w') as f:
+            f.write(str(self))
+
+    @classmethod
+    def from_atom_list(cls, atom_list: List[atom]) -> 'CanonizedMapping':
+        '''Create a CanonizedMapping object from a list of Atoms.'''
+        return cls([{"original": atom.originalIndex,
+                     "canonized": atom.currentIndex, 
+                     "item": atom} for atom in atom_list])
+
+    @property
+    def original_to_canonized_mapping(self) -> List:
+        '''Get the mapping from original index to canonized index.'''
+        return [i["canonized"] for i in sorted(self.lst, key=lambda p:p["original"])]
+    
+    @property
+    def canonized_to_original_mapping(self) -> List:
+        '''Get the mapping from canonized index to original index.'''
+        return [i["original"] for i in sorted(self.lst, key=lambda p:p["canonized"])]
+
+@dataclass
+class CanonizedRMSDResult(RMSDResult):
+    file1_mapping: CanonizedMapping = None
+    file2_mapping: CanonizedMapping = None
+
+    @classmethod
+    def from_rmsd_result(cls, rmsd_result: RMSDResult):
+        '''Update the RMSD result with the values from the RMSD result.'''
+        return cls(rmsd=rmsd_result.rmsd, 
+                   transition=rmsd_result.transition, 
+                   rotation=rmsd_result.rotation, 
+                   transformed=rmsd_result.transformed)
+    
+    def get_mapping(self) -> list:
+        '''Get the mapping between the two molecules.'''
+        assert self.file1_mapping is not None and self.file2_mapping is not None, \
+            "The mapping between the two molecules is not available."
+        result = []
+        for item in self.file1_mapping.lst:
+            canonized_idx = item["canonized"]
+            idx2 = [atom["original"] for atom in self.file2_mapping.lst 
+                    if atom["canonized"] == canonized_idx][0]
+            result.append((item["original"], idx2))
+        return result
+
+    @property
+    def mapping_repr(self) -> str:
+        '''get the string representation of the mapping between two molecules.'''
+        output_results = ["Index in File 1 || Index in File 2"]
+        for item in sorted(self.get_mapping()):
+            output_results.append("{:>16}  {:>16}".format(item[0] + 1, item[1] + 1))
+
+        result = "\n".join(output_results)
+        return result
