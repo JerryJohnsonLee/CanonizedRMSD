@@ -24,7 +24,7 @@ class Canonizer:
                                        aromatize=self.aromatize, 
                                        assign_rdkit_stereo=self.rdkit_stereo)
         molecule_noH = Chem.RemoveHs(molecule)
-        mapping = get_canonized_mapping(molecule_noH, stereo=self.rdkit_stereo)
+        mapping = get_canonized_mapping(molecule_noH, stereo=self.rdkit_stereo, unbroken_molecule_container=[])
         return mapping
 
 class RMSDCalc:
