@@ -124,6 +124,7 @@ class CanonizedMapping:
 
     def __post_init__(self) -> None:
         self._sort()
+        self.non_h_idx_mapping = []
 
     def _sort(self) -> None:
         '''Sort the canonized mapping in place.'''
@@ -142,6 +143,12 @@ class CanonizedMapping:
         result = "\n".join(output_results)
         return result
     
+    def _remap_non_H_idx(self):
+        '''In-place replace the heavy-atom-only indices with the original indices which have hydrogens in the middle'''
+        assert len(self.non_h_idx_mapping) > 0, "Error: Non-hydrogen index mapping has not been specified!"
+        for i in range(len(self.lst)):
+            self.lst[i]['original'] = self.non_h_idx_mapping[self.lst[i]['original']]
+
     def dataframe(self) -> pd.DataFrame:
         '''Return the canonized mapping as a pandas DataFrame.'''
         return pd.DataFrame(self.lst)

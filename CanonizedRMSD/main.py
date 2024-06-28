@@ -45,12 +45,19 @@ class RMSDCalc:
     def run(self, input_file_1: Union[str, Chem.rdchem.Mol],
                   input_file_2: Union[str, Chem.rdchem.Mol],
                   no_alignment: bool=False) -> CanonizedRMSDResult:
-        mol_A, _ = prepare_molecule(input_file_1, removeH=self.remove_Hs)
-        mol_B, _ = prepare_molecule(input_file_2, removeH=self.remove_Hs)
-        return calc_canonical_rmsd(mol_A, 
-                                   mol_B, 
-                                   no_isomerism=self.ignore_isomerism,
-                                   identity_check=self.identity_check,
-                                   no_alignment=no_alignment,
-                                   algorithm=self.rmsd_algorithm,
-                                   tiebreaking=self.symmetry_correction)
+        mol_A, non_H_idx_A = prepare_molecule(input_file_1, removeH=self.remove_Hs)
+        mol_B, non_H_idx_B = prepare_molecule(input_file_2, removeH=self.remove_Hs)
+        canonized_result = calc_canonical_rmsd(mol_A, 
+                                               mol_B, 
+                                               no_isomerism=self.ignore_isomerism,
+                                               identity_check=self.identity_check,
+                                               no_alignment=no_alignment,
+                                               algorithm=self.rmsd_algorithm,
+                                               tiebreaking=self.symmetry_correction)
+        # specify the heavy atom index remappings to make the index work properly when remove_Hs=True
+        if self.remove_Hs:
+            canonized_result.file1_mapping.non_h_idx_mapping = non_H_idx_A
+            canonized_result.file2_mapping.non_h_idx_mapping = non_H_idx_B
+            canonized_result.file1_mapping._remap_non_H_idx()
+            canonized_result.file2_mapping._remap_non_H_idx()
+        return canonized_result

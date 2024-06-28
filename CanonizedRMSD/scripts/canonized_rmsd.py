@@ -5,7 +5,7 @@ Author: Jie Li
 Date created: Jun 25, 2024
 """
 
-
+import time
 import argparse
 from CanonizedRMSD.main import RMSDCalc
 
@@ -25,15 +25,20 @@ def parse_args():
     parser.add_argument('-alg', "--algorithm", choices=["Kabsch", "QCP"], default="Kabsch", help="algorithm to calculate RMSD, default to Kabsch")
     parser.add_argument('-r', "--removeHs", action="store_true", help="remove H atoms")
     parser.add_argument('-nsc', "--no_symmetry_correction", action="store_true", help="not performing symmetry correction (branching tiebreaking) during RMSD calculation")
+    parser.add_argument('-t', '--time', action='store_true', help='print total calculation time')
 
     args = parser.parse_args()
     return args
 
 def main():
     args = parse_args()
-    calculator = RMSDCalc(args.ignore_isomerism, args.identity_check, args.removeHs, args.algorithm, args.no_symmetry_correction)
+    calculator = RMSDCalc(args.ignore_isomerism, args.identity_check, args.removeHs, args.algorithm, not args.no_symmetry_correction)
+    if args.time:
+        t0 = time.time()
     results = calculator.run(args.file1, args.file2, args.no_alignment)
 
+    if args.time:
+        print("Calculation finished in %f s." % (time.time() - t0))
     print("Canonized RMSD:", results.rmsd)
 
     if args.mapping:
