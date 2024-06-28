@@ -45,7 +45,7 @@ def calc_canonical_rmsd(mol_A: Chem.rdchem.Mol,
                         no_alignment: bool=False, 
                         algorithm: Literal["Kabsch", "QCP"]="Kabsch", 
                         tiebreaking: bool=True) -> CanonizedRMSDResult:
-    mapping_A = get_canonized_mapping(mol_A, no_isomerism=no_isomerism)
+    mapping_A = get_canonized_mapping(mol_A, no_isomerism=no_isomerism, unbroken_molecule_container=[])
     # prepare a container for the unbroken molecule so that it can be used later
     unbroken_molecule_container = []
     temp_mapping_B = get_canonized_mapping(mol_B, no_isomerism=no_isomerism,

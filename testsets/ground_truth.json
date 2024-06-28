@@ -1,0 +1,26 @@
+{
+    "g": {
+        "original_to_canonized_mapping": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9],
+        "stereo_tags": {"7": "S"}
+    },
+    "h": {
+        "original_to_canonized_mapping": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        "stereo_tags": {"7": "R"}
+    },
+    "i": {
+        "original_to_canonized_mapping": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "stereo_tags": {"7": "S"}
+    },
+    "j": {
+        "original_to_canonized_mapping": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "stereo_tags": {"7": "R"}
+    },
+    "k": {
+        "original_to_canonized_mapping": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+        "stereo_tags": {}
+    },
+    "l": {
+        "original_to_canonized_mapping": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
+        "stereo_tags": {"4": "r", "5": "S", "6": "R", "7": "s", "8": "S", "9": "S"}
+    }
+}

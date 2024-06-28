@@ -143,6 +143,14 @@ class CanonizedMapping:
         result = "\n".join(output_results)
         return result
     
+    def get_stereochemical_tags(self) -> List:
+        '''Get the stereochemical tags in the original index.'''
+        tags = {}
+        for item in self.lst:
+            if item['item'].stereochemistry != 0:
+                tags[item['original']] = stereochemical_tags[item['item'].stereochemistry]
+        return tags
+    
     def _remap_non_H_idx(self):
         '''In-place replace the heavy-atom-only indices with the original indices which have hydrogens in the middle'''
         assert len(self.non_h_idx_mapping) > 0, "Error: Non-hydrogen index mapping has not been specified!"
@@ -197,7 +205,7 @@ class CanonizedRMSDResult(RMSDResult):
             canonized_idx = item["canonized"]
             idx2 = [atom["original"] for atom in self.file2_mapping.lst 
                     if atom["canonized"] == canonized_idx][0]
-            result.append((item["original"], idx2))
+            result.append([item["original"], idx2])
         return result
 
     @property
